@@ -34,8 +34,6 @@
 
 #include "phd.h"
 
-#include "phdupdate.h"
-
 #include <curl/curl.h>
 #include <memory>
 #include <wx/cmdline.h>
@@ -408,6 +406,7 @@ static void OpenLogs(bool rollover)
     bool forceDebugOpen = rollover ? true : false;
     Debug.InitDebugLog(debugEnabled, forceDebugOpen);
 
+    Debug.Write("OpenAstro Alpaca Support\n");
     Debug.Write(wxString::Format("PHD2 version %s %s execution with:\n", FULLVER, rollover ? "continues" : "begins"));
     Debug.Write(wxString::Format("   %s\n", GetOsDescription()));
 #if defined(__linux__)
@@ -622,8 +621,6 @@ bool PhdApp::OnInit()
     {
         pFrame->pGearDialog->ShowProfileWizard(); // First-light version of profile wizard
     }
-
-    PHD2Updater::InitUpdater();
 
     return true;
 }

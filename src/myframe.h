@@ -132,8 +132,6 @@ class MyFrameConfigDialogCtrlSet : public ConfigDialogCtrlSet
     MyFrame *m_pFrame;
     wxCheckBox *m_pResetConfiguration;
     wxCheckBox *m_pResetDontAskAgain;
-    wxCheckBox *m_updateEnabled;
-    wxCheckBox *m_updateMajorOnly;
     wxRadioButton *m_ditherRandom;
     wxRadioButton *m_ditherSpiral;
     wxSpinCtrlDouble *m_ditherScaleFactor;

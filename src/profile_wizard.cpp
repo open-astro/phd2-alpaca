@@ -220,6 +220,21 @@ static void AddCellPair(wxWindow *parent, wxGridBagSizer *gbs, int row, const wx
     gbs->Add(ctrl, wxGBPosition(row, 2), wxDefaultSpan, wxALL, 5);
 }
 
+static wxArrayString FilterAlpacaOptions(const wxArrayString& options)
+{
+    wxArrayString filtered;
+    for (const auto& option : options)
+    {
+        if (option.CmpNoCase(_("None")) == 0)
+            filtered.Add(option);
+        else if (option.Upper().Contains("ALPACA"))
+            filtered.Add(option);
+    }
+    if (filtered.IsEmpty())
+        filtered.Add(_("None"));
+    return filtered;
+}
+
 ProfileWizard::ProfileWizard(wxWindow *parent, bool showGreeting)
     : wxDialog(parent, wxID_ANY, _("New Profile Wizard"), wxDefaultPosition, wxDefaultSize, wxCAPTION | wxCLOSE_BOX),
       m_useCamera(false), m_useMount(false), m_useAuxMount(false), m_autoRestore(false), m_launchDarks(true),
@@ -276,8 +291,8 @@ ProfileWizard::ProfileWizard(wxWindow *parent, bool showGreeting)
     // Gear label and combo box
     m_pGearGrid = new wxFlexGridSizer(2, 2, 5, 15);
     m_pGearLabel = new wxStaticText(this, wxID_ANY, "Temp:", wxDefaultPosition, wxDefaultSize);
-    m_pGearChoice = new wxChoice(this, ID_COMBO, wxDefaultPosition, wxSize(265, -1), GuideCamera::GuideCameraList(), 0,
-                                 wxDefaultValidator, _("Gear"));
+    m_pGearChoice = new wxChoice(this, ID_COMBO, wxDefaultPosition, wxSize(265, -1),
+                                 FilterAlpacaOptions(GuideCamera::GuideCameraList()), 0, wxDefaultValidator, _("Gear"));
     m_pGearGrid->Add(m_pGearLabel, 1, wxALIGN_LEFT);
     m_pGearGrid->Add(m_pGearChoice, 1, wxLEFT, 20);
     m_pDeviceLabel = new wxStaticText(this, wxID_ANY, _("Device Id:"), wxDefaultPosition, wxDefaultSize);
@@ -783,7 +798,7 @@ void ProfileWizard::UpdateState(const int change)
             m_pPrevBtn->Enable(true);
             m_pGearLabel->SetLabel(_("Guide Camera:"));
             m_pGearChoice->Clear();
-            m_pGearChoice->Append(GuideCamera::GuideCameraList());
+            m_pGearChoice->Append(FilterAlpacaOptions(GuideCamera::GuideCameraList()));
             if (m_SelectedCamera.length() > 0)
                 m_pGearChoice->SetStringSelection(m_SelectedCamera);
             m_pGearLabel->Show(true);
@@ -814,7 +829,7 @@ void ProfileWizard::UpdateState(const int change)
                 m_pPrevBtn->Enable(true);
                 m_pGearLabel->SetLabel(_("Mount:"));
                 m_pGearChoice->Clear();
-                m_pGearChoice->Append(Scope::MountList());
+                m_pGearChoice->Append(FilterAlpacaOptions(Scope::MountList()));
                 if (m_SelectedMount.length() > 0)
                     m_pGearChoice->SetStringSelection(m_SelectedMount);
                 m_pUserProperties->Show(false);
@@ -836,7 +851,7 @@ void ProfileWizard::UpdateState(const int change)
                 SetTitle(TitlePrefix + _("Choose an Auxiliary Mount Connection (optional)"));
                 m_pGearLabel->SetLabel(_("Aux Mount:"));
                 m_pGearChoice->Clear();
-                m_pGearChoice->Append(Scope::AuxMountList());
+                m_pGearChoice->Append(FilterAlpacaOptions(Scope::AuxMountList()));
                 m_pGearChoice->SetStringSelection(m_SelectedAuxMount); // SelectedAuxMount is never null
                 m_pInstructions->SetLabel(_("Since your primary mount connection does not report pointing position, you may "
                                             "want to choose an 'Aux Mount' connection"));
@@ -848,7 +863,7 @@ void ProfileWizard::UpdateState(const int change)
             SetTitle(TitlePrefix + _("Choose an Adaptive Optics Device (optional)"));
             m_pGearLabel->SetLabel(_("AO:"));
             m_pGearChoice->Clear();
-            m_pGearChoice->Append(StepGuider::AOList());
+            m_pGearChoice->Append(FilterAlpacaOptions(StepGuider::AOList()));
             m_pGearChoice->SetStringSelection(m_SelectedAO); // SelectedAO is never null
             m_pInstructions->SetLabel(_("Specify your adaptive optics device if desired"));
             if (change == -1) // User is backing up in wizard dialog
@@ -866,7 +881,7 @@ void ProfileWizard::UpdateState(const int change)
             SetTitle(TitlePrefix + _("Choose a Rotator Device (optional)"));
             m_pGearLabel->SetLabel(_("Rotator:"));
             m_pGearChoice->Clear();
-            m_pGearChoice->Append(Rotator::RotatorList());
+            m_pGearChoice->Append(FilterAlpacaOptions(Rotator::RotatorList()));
             m_pGearChoice->SetStringSelection(m_SelectedRotator); // SelectedRotator is never null
             m_pInstructions->SetLabel(_("Specify your rotator device if desired"));
             if (change == -1) // User is backing up in wizard dialog

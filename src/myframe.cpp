@@ -98,7 +98,6 @@ EVT_MENU(MENU_POLARDRIFTTOOL, MyFrame::OnPolarDriftTool)
 EVT_MENU(MENU_STATICPATOOL, MyFrame::OnStaticPaTool)
 EVT_MENU(MENU_COMETTOOL, MyFrame::OnCometTool)
 EVT_MENU(MENU_GUIDING_ASSISTANT, MyFrame::OnGuidingAssistant)
-EVT_MENU(MENU_HELP_UPGRADE, MyFrame::OnUpgrade)
 EVT_MENU(MENU_HELP_ONLINE, MyFrame::OnHelpOnline)
 EVT_MENU(MENU_HELP_LOG_FOLDER, MyFrame::OnHelpLogFolder)
 EVT_MENU(MENU_HELP_UPLOAD_LOGS, MyFrame::OnHelpUploadLogs)
@@ -208,10 +207,52 @@ struct FileDropTarget : public wxFileDropTarget
     }
 };
 
+static bool ShowOpenAstroDisclaimer(wxWindow *parent)
+{
+    wxDialog dlg(parent, wxID_ANY, _("OpenAstro Alpaca Support"), wxDefaultPosition, wxDefaultSize,
+                 wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
+    wxBoxSizer *top = new wxBoxSizer(wxVERTICAL);
+
+#include "icons/oa512.png.h"
+    wxImage logoImg(wxBitmap(wxBITMAP_PNG_FROM_DATA(oa512)).ConvertToImage());
+    int w = logoImg.GetWidth();
+    int h = logoImg.GetHeight();
+    if (w > 0 && h > 0)
+    {
+        int maxDim = 160;
+        double scale = (double) maxDim / (double) wxMax(w, h);
+        int newW = wxMax(1, (int) (w * scale));
+        int newH = wxMax(1, (int) (h * scale));
+        logoImg = logoImg.Scale(newW, newH, wxIMAGE_QUALITY_HIGH);
+        top->Add(new wxStaticBitmap(&dlg, wxID_ANY, wxBitmap(logoImg)),
+                 wxSizerFlags().Align(wxALIGN_CENTER).Border(wxTOP | wxLEFT | wxRIGHT, 12));
+    }
+
+    wxStaticText *text = new wxStaticText(
+        &dlg, wxID_ANY,
+        _("OpenAstro private build with Alpaca support only.\nThis is not an official PHD2 build and is supported by OpenAstro."));
+    text->Wrap(420);
+    top->Add(text, wxSizerFlags().Align(wxALIGN_CENTER).Border(wxALL, 12));
+
+    wxBoxSizer *btnSizer = new wxBoxSizer(wxHORIZONTAL);
+    wxButton *ok = new wxButton(&dlg, wxID_OK, _("I Understand"));
+    wxButton *cancel = new wxButton(&dlg, wxID_CANCEL, _("Quit"));
+    btnSizer->Add(ok, wxSizerFlags().Border(wxRIGHT, 10));
+    btnSizer->Add(cancel);
+    top->Add(btnSizer, wxSizerFlags().Align(wxALIGN_CENTER).Border(wxBOTTOM, 12));
+
+    dlg.SetSizerAndFit(top);
+    dlg.CentreOnParent();
+    dlg.SetDefaultItem(ok);
+
+    return dlg.ShowModal() == wxID_OK;
+}
+
 // ---------------------- Main Frame -------------------------------------
 // frame constructor
 MyFrame::MyFrame()
-    : wxFrame(nullptr, wxID_ANY, wxEmptyString), m_showBookmarksAccel(0), m_bookmarkLockPosAccel(0), pStatsWin(nullptr)
+    : wxFrame(nullptr, wxID_ANY, wxEmptyString), m_showBookmarksAccel(0), m_bookmarkLockPosAccel(0), pStatsWin(nullptr),
+      m_upgradeMenuItem(nullptr)
 {
     m_mgr.SetManagedWindow(this);
 
@@ -346,6 +387,7 @@ MyFrame::MyFrame()
     m_rawImageModeWarningDone = false;
 
     UpdateTitle();
+    StatusMsg(_("PHD2 brought to you by OpenAstro with Alpaca Support Only"));
 
     SetupHelpFile();
 
@@ -414,6 +456,12 @@ MyFrame::MyFrame()
 
     // this forces force a resize of MainToolbar in case size changed from the saved perspective
     MainToolbar->Realize();
+
+    if (!ShowOpenAstroDisclaimer(this))
+    {
+        wxGetApp().TerminateApp();
+        return;
+    }
 }
 
 MyFrame::~MyFrame()
@@ -561,7 +609,6 @@ void MyFrame::SetupMenuBar()
 
     wxMenu *help_menu = new wxMenu;
     help_menu->Append(wxID_ABOUT, _("&About..."), wxString::Format(_("About %s"), APPNAME));
-    m_upgradeMenuItem = help_menu->Append(MENU_HELP_UPGRADE, _("&Check for updates"), _("Check for PHD2 software updates"));
     help_menu->Append(MENU_HELP_ONLINE, _("Online Support"), _("Ask for help in the PHD2 Forum"));
     help_menu->Append(MENU_HELP_LOG_FOLDER, _("Open Log Folder"), _("Open the log folder"));
     help_menu->Append(MENU_HELP_UPLOAD_LOGS, _("Upload Log Files..."), _("Upload log files for review"));
@@ -1568,7 +1615,7 @@ void MyFrame::ClearStatusBarGuiderInfo()
 
 void MyFrame::OnUpgrade(wxCommandEvent& evt)
 {
-    PHD2Updater::CheckNow();
+    wxMessageBox(_("Software updates are disabled in this build."), _("Software Update"), wxOK | wxICON_INFORMATION, this);
 }
 
 void MyFrame::NotifyUpdaterStateChanged()
@@ -2949,7 +2996,6 @@ void MyFrameConfigDialogPane::LayoutControls(BrainCtrlIdMap& CtrlMap)
     pTopGrid->Add(GetSingleCtrl(CtrlMap, AD_cbResetConfig), grid_flags);
     pTopGrid->Add(GetSingleCtrl(CtrlMap, AD_cbDontAsk), grid_flags);
     this->Add(pTopGrid, sizer_flags);
-    this->Add(GetSizerCtrl(CtrlMap, AD_szSoftwareUpdate), sizer_flags);
     this->Add(GetSizerCtrl(CtrlMap, AD_szLogFileInfo), sizer_flags);
     this->Add(GetSingleCtrl(CtrlMap, AD_cbEnableImageLogging), sizer_flags);
     this->Add(GetSizerCtrl(CtrlMap, AD_szImageLoggingOptions), sizer_flags);
@@ -3122,19 +3168,6 @@ MyFrameConfigDialogCtrlSet::MyFrameConfigDialogCtrlSet(MyFrame *pFrame, Advanced
     m_pLanguage = new wxChoice(parent, wxID_ANY, wxPoint(-1, -1), wxSize(width + 35, -1), PhdLanguages.Names());
     AddLabeledCtrl(CtrlMap, AD_szLanguage, _("Language"), m_pLanguage,
                    wxString::Format(_("%s Language. You'll have to restart PHD to take effect."), APPNAME));
-
-    // Software Update
-    {
-        parent = GetParentWindow(AD_szSoftwareUpdate);
-        wxStaticBoxSizer *sz = new wxStaticBoxSizer(wxHORIZONTAL, parent, _("Software Update"));
-        m_updateEnabled = new wxCheckBox(parent, wxID_ANY, _("Automatically check for updates"));
-        m_updateEnabled->SetToolTip(_("Check for software updates when PHD2 starts (recommended)"));
-        sz->Add(m_updateEnabled, wxSizerFlags().Align(wxALIGN_CENTER_VERTICAL).Border(wxALL, 8));
-        m_updateMajorOnly = new wxCheckBox(parent, wxID_ANY, _("Only check for major releases"));
-        m_updateMajorOnly->SetToolTip(_("Ignore minor (development) releases when checking for updates"));
-        sz->Add(m_updateMajorOnly, wxSizerFlags().Align(wxALIGN_CENTER_VERTICAL).Border(wxALL, 8));
-        AddGroup(CtrlMap, AD_szSoftwareUpdate, sz);
-    }
 
     // Log directory location - use a group box with a wide text edit control and a 'browse' button at the far right
     parent = GetParentWindow(AD_szLogFileInfo);
@@ -3365,12 +3398,6 @@ void MyFrameConfigDialogCtrlSet::LoadValues()
     m_LogNextNFrames->SetValue(imlSettings.logNextNFrames);
     m_LogNextNFramesCount->SetValue(imlSettings.logNextNFramesCount);
 
-    UpdaterSettings updSettings;
-    PHD2Updater::GetSettings(&updSettings);
-
-    m_updateEnabled->SetValue(updSettings.enabled);
-    m_updateMajorOnly->SetValue(updSettings.series == UPD_SERIES_MAIN);
-
     wxCommandEvent dummy;
     OnImageLogEnableChecked(dummy);
 }
@@ -3463,10 +3490,6 @@ void MyFrameConfigDialogCtrlSet::UnloadValues()
         ImageLogger::ApplySettings(imlSettings);
         SaveImageLoggerSettings(imlSettings);
 
-        UpdaterSettings updSettings;
-        updSettings.enabled = m_updateEnabled->GetValue();
-        updSettings.series = m_updateMajorOnly->GetValue() ? UPD_SERIES_MAIN : UPD_SERIES_DEV;
-        PHD2Updater::SetSettings(updSettings);
     }
     catch (const wxString& Msg)
     {
