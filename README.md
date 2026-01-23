@@ -1,4 +1,4 @@
-# OpenAstro Alpaca Build (Unofficial)
+# OpenAstro PHD2 Alpaca Build (Unofficial)
 
 <img src="icons/oa512.png" alt="OpenAstro Logo" width="125">
 
