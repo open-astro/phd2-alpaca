@@ -224,7 +224,11 @@ static bool ShowOpenAstroDisclaimer(wxWindow *parent)
         int newW = wxMax(1, (int) (w * scale));
         int newH = wxMax(1, (int) (h * scale));
         logoImg = logoImg.Scale(newW, newH, wxIMAGE_QUALITY_HIGH);
-        top->Add(new wxStaticBitmap(&dlg, wxID_ANY, wxBitmap(logoImg)),
+        wxBitmap logoBmp(logoImg);
+        wxIcon dlgIcon;
+        dlgIcon.CopyFromBitmap(logoBmp);
+        dlg.SetIcon(dlgIcon);
+        top->Add(new wxStaticBitmap(&dlg, wxID_ANY, logoBmp),
                  wxSizerFlags().Align(wxALIGN_CENTER).Border(wxTOP | wxLEFT | wxRIGHT, 12));
     }
 
@@ -271,10 +275,10 @@ MyFrame::MyFrame()
 
     m_sampling = 1.0;
 
-#include "icons/phd2_128.png.h"
-    wxBitmap phd2(wxBITMAP_PNG_FROM_DATA(phd2_128));
+#include "icons/oa512.png.h"
+    wxBitmap oaIcon(wxBITMAP_PNG_FROM_DATA(oa512));
     wxIcon icon;
-    icon.CopyFromBitmap(phd2);
+    icon.CopyFromBitmap(oaIcon);
     SetIcon(icon);
 
     // SetIcon(wxIcon(_T("progicon")));
