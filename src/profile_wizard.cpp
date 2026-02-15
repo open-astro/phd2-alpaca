@@ -249,11 +249,11 @@ ProfileWizard::ProfileWizard(wxWindow *parent, bool showGreeting)
     wxBitmap phd2(wxBITMAP_PNG_FROM_DATA(phd2_48));
     m_bitmaps[STATE_GREETINGS] = new wxBitmap(phd2);
     m_bitmaps[STATE_WRAPUP] = new wxBitmap(phd2);
-#include "icons/cam2.xpm"
-    m_bitmaps[STATE_CAMERA] = new wxBitmap(cam_icon);
-#include "icons/scope1.xpm"
-    m_bitmaps[STATE_MOUNT] = new wxBitmap(scope_icon);
-    m_bitmaps[STATE_AUXMOUNT] = new wxBitmap(scope_icon);
+#include "icons/cam2.png.h"
+    m_bitmaps[STATE_CAMERA] = new wxBitmap(wxBITMAP_PNG_FROM_DATA(cam2));
+#include "icons/scope1.png.h"
+    m_bitmaps[STATE_MOUNT] = new wxBitmap(wxBITMAP_PNG_FROM_DATA(scope1));
+    m_bitmaps[STATE_AUXMOUNT] = new wxBitmap(wxBITMAP_PNG_FROM_DATA(scope1));
 #include "icons/ao.xpm"
     m_bitmaps[STATE_AO] = new wxBitmap(ao_xpm);
     m_bitmaps[STATE_ROTATOR] = new wxBitmap(phd2);
