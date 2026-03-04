@@ -766,7 +766,7 @@ bool Camera_ZWO::Capture(usImage& img, const CaptureParams& captureParams)
         binning_change = true;
     }
 
-    wxRect const limit_frame = options & CAPTURE_IGNORE_FRAME_LIMIT ? wxRect() : LimitFrame;
+    wxRect const limit_frame = options & CAPTURE_IGNORE_FRAME_LIMIT ? wxRect() : captureParams.limitFrame;
 
     // always update the frame size in case the limit frame or binning changed
     wxSize const binned_frame_size(BinnedFrameSize(HwBinning));
@@ -831,6 +831,7 @@ bool Camera_ZWO::Capture(usImage& img, const CaptureParams& captureParams)
 
     bool size_change = frame.GetSize() != m_frame.GetSize();
     bool pos_change = frame.GetLeftTop() != m_frame.GetLeftTop();
+    bool force_set_start_pos = false;
 
     if (size_change || pos_change)
     {
@@ -847,9 +848,14 @@ bool Camera_ZWO::Capture(usImage& img, const CaptureParams& captureParams)
         if (status != ASI_SUCCESS)
             Debug.Write(wxString::Format("ZWO: setImageFormat(%d,%d,%hu) => %d\n", frame.GetWidth(), frame.GetHeight(),
                                          HwBinning, status));
+
+        // calling ASISetROIFormat without a subsequent call to ASISetStartPos causes
+        // the camera to return an ROI with incorrect start position coordinates.
+        // Forcing a call to ASISetStartPos fixes the problem.
+        force_set_start_pos = true;
     }
 
-    if (pos_change)
+    if (pos_change || force_set_start_pos)
     {
         ASI_ERROR_CODE status = ASISetStartPos(m_cameraId, frame.GetLeft(), frame.GetTop());
         if (status != ASI_SUCCESS)
