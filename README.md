@@ -4,7 +4,7 @@
 
 ## Overview
 
-This repository contains an OpenAstro-maintained build derived from PHD2 that is had ASCOM Alpaca Support. It is intended for use with [**AlpacaBridge**](https://github.com/open-astro/AlpacaBridge) and related Alpaca-based workflows.
+This repository contains an OpenAstro-maintained build derived from PHD2 that has ASCOM Alpaca Support. It is intended for use with [**AlpacaBridge**](https://github.com/open-astro/AlpacaBridge) and related Alpaca-based workflows.
 
 ## Important Notice
 
