@@ -35,11 +35,11 @@
 
 #ifdef GUIDE_ALPACA
 
-#include "scope_alpaca.h"
-#include "scope.h"
-#include "config_alpaca.h"
-#include "alpaca_client.h"
-#include <wx/stopwatch.h>
+# include "scope_alpaca.h"
+# include "scope.h"
+# include "config_alpaca.h"
+# include "alpaca_client.h"
+# include <wx/stopwatch.h>
 
 ScopeAlpaca::ScopeAlpaca()
 {
@@ -367,15 +367,15 @@ static void SuppressSlewAlert(intptr_t)
     TheScope()->EnableStopGuidingWhenSlewing(false);
 }
 
-#define CheckSlewing(result)                                                                                            \
-    do                                                                                                                   \
-    {                                                                                                                    \
-        if (IsStopGuidingWhenSlewingEnabled() && Slewing())                                                             \
-        {                                                                                                               \
-            *(result) = MOVE_ERROR_SLEWING;                                                                             \
-            throw ERROR_INFO("attempt to guide while slewing");                                                         \
-        }                                                                                                               \
-    } while (0)
+# define CheckSlewing(result)                                                                                                  \
+     do                                                                                                                        \
+     {                                                                                                                         \
+         if (IsStopGuidingWhenSlewingEnabled() && Slewing())                                                                   \
+         {                                                                                                                     \
+             *(result) = MOVE_ERROR_SLEWING;                                                                                   \
+             throw ERROR_INFO("attempt to guide while slewing");                                                               \
+         }                                                                                                                     \
+     } while (0)
 
 Mount::MOVE_RESULT ScopeAlpaca::Guide(GUIDE_DIRECTION direction, int duration)
 {
@@ -723,8 +723,9 @@ bool ScopeAlpaca::GetGuideRates(double *pRAGuideRate, double *pDecGuideRate)
             }
             // Don't throw - allow connection to proceed with warning
             // Some mounts may not report guide speeds or may return 0.0 initially
-            Debug.Write(wxString::Format("Alpaca Mount: Warning - invalid guide speeds (RA: %.4f, Dec: %.4f), but allowing connection\n", 
-                                        *pRAGuideRate, *pDecGuideRate));
+            Debug.Write(wxString::Format(
+                "Alpaca Mount: Warning - invalid guide speeds (RA: %.4f, Dec: %.4f), but allowing connection\n", *pRAGuideRate,
+                *pDecGuideRate));
             bError = true; // Return error but don't block connection
             return bError;
         }

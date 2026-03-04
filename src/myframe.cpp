@@ -3442,7 +3442,6 @@ void MyFrameConfigDialogCtrlSet::UnloadValues()
 
         ImageLogger::ApplySettings(imlSettings);
         SaveImageLoggerSettings(imlSettings);
-
     }
     catch (const wxString& Msg)
     {

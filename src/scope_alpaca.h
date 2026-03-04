@@ -36,7 +36,7 @@
 
 #ifdef GUIDE_ALPACA
 
-#include "alpaca_client.h"
+# include "alpaca_client.h"
 
 class ScopeAlpaca : public Scope
 {
@@ -97,4 +97,3 @@ public:
 
 #endif // GUIDE_ALPACA
 #endif // SCOPE_ALPACA_INCLUDED
-

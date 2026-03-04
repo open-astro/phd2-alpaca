@@ -17,6 +17,19 @@ This repository contains an OpenAstro-maintained build derived from PHD2 that is
 - Alpaca-only device support
 - Designed to work with AlpacaBridge
 
+## Code formatting
+
+CI runs a clang-format check. To fix formatting locally before pushing:
+
+```bash
+# Install clang-format 18 (Ubuntu/Debian)
+sudo apt-get install -y clang-format-18
+
+# Format all C++ sources
+./build/run-clang-format
+git add -A && git diff --cached --exit-code || git commit -m "Apply clang-format"
+```
+
 ## License
 
 This project remains under the original PHD2 licensing terms. See [LICENSE.txt](LICENSE.txt) for details.

@@ -35,9 +35,9 @@
 
 #ifdef ROTATOR_ALPACA
 
-#include "rotator_alpaca.h"
-#include "config_alpaca.h"
-#include "alpaca_client.h"
+# include "rotator_alpaca.h"
+# include "config_alpaca.h"
+# include "alpaca_client.h"
 
 static const int kConnectTimeoutMs = 10000;
 static const int kConnectPollIntervalMs = 100;
@@ -77,8 +77,8 @@ bool RotatorAlpaca::WaitForConnected()
         attempts = 1;
     }
 
-    Debug.Write(wxString::Format("Alpaca Rotator: waiting up to %d ms for device %ld to connect\n",
-                                 kConnectTimeoutMs, m_deviceNumber));
+    Debug.Write(
+        wxString::Format("Alpaca Rotator: waiting up to %d ms for device %ld to connect\n", kConnectTimeoutMs, m_deviceNumber));
     for (int attempt = 0; attempt < attempts; ++attempt)
     {
         if (m_client->GetBool(endpoint, &connected, &errorCode) && connected)
@@ -143,8 +143,8 @@ bool RotatorAlpaca::Connect()
         JsonParser parser;
         if (!m_client->Put(endpoint, params, parser, &errorCode))
         {
-            wxString msg = wxString::Format(_("Alpaca Rotator: Failed to connect device %ld (error %ld)"),
-                                            m_deviceNumber, errorCode);
+            wxString msg =
+                wxString::Format(_("Alpaca Rotator: Failed to connect device %ld (error %ld)"), m_deviceNumber, errorCode);
             Debug.Write(msg + "\n");
             if (pFrame)
             {

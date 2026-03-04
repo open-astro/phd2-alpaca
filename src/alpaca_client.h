@@ -63,7 +63,8 @@ public:
     ~AlpacaClient();
 
     bool Get(const wxString& endpoint, JsonParser& parser, long *errorCode = nullptr);
-    bool GetRaw(const wxString& endpoint, const wxString& acceptHeader, std::string *response, std::string *contentType, long *errorCode = nullptr);
+    bool GetRaw(const wxString& endpoint, const wxString& acceptHeader, std::string *response, std::string *contentType,
+                long *errorCode = nullptr);
     bool Put(const wxString& endpoint, const wxString& params, JsonParser& parser, long *errorCode = nullptr);
     bool GetDouble(const wxString& endpoint, double *value, long *errorCode = nullptr);
     bool GetInt(const wxString& endpoint, int *value, long *errorCode = nullptr);
@@ -75,4 +76,3 @@ public:
 };
 
 #endif // ALPACA_CLIENT_H
-

@@ -36,7 +36,7 @@
 
 #ifdef ALPACA_CAMERA
 
-#include "alpaca_client.h"
+# include "alpaca_client.h"
 
 class CameraAlpaca : public GuideCamera
 {

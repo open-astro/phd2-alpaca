@@ -47,7 +47,7 @@ class AlpacaConfig : public wxDialog
 {
     wxTextCtrl *host;
     wxTextCtrl *port;
-    wxWindow *deviceNumber;  // wxComboBox for device selection
+    wxWindow *deviceNumber; // wxComboBox for device selection
     wxComboBox *serverList;
     wxButton *discoverButton;
     wxStaticText *discoverStatus;
@@ -82,4 +82,3 @@ private:
 };
 
 #endif
-

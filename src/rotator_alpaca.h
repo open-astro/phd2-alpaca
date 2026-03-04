@@ -36,8 +36,8 @@
 
 #ifdef ROTATOR_ALPACA
 
-#include "rotator.h"
-#include "alpaca_client.h"
+# include "rotator.h"
+# include "alpaca_client.h"
 
 class RotatorAlpaca : public Rotator
 {

@@ -41,14 +41,11 @@ struct AlpacaServerInfo
 {
     wxString host;
     long port;
-    
-    AlpacaServerInfo() : port(0) {}
-    AlpacaServerInfo(const wxString& h, long p) : host(h), port(p) {}
-    
-    wxString ToString() const
-    {
-        return wxString::Format("%s:%ld", host, port);
-    }
+
+    AlpacaServerInfo() : port(0) { }
+    AlpacaServerInfo(const wxString& h, long p) : host(h), port(p) { }
+
+    wxString ToString() const { return wxString::Format("%s:%ld", host, port); }
 };
 
 class AlpacaDiscovery
@@ -57,13 +54,12 @@ public:
     // Discover Alpaca servers on the local network
     // Returns a list of discovered servers (host:port format)
     static wxArrayString DiscoverServers(int numQueries = 2, int timeoutSeconds = 2);
-    
+
     // Discover servers and return detailed info
     static void DiscoverServers(wxArrayString& serverList, int numQueries = 2, int timeoutSeconds = 2);
-    
+
     // Parse a server string (host:port) into components
     static bool ParseServerString(const wxString& serverStr, wxString& host, long& port);
 };
 
 #endif // ALPACA_DISCOVERY_H
-

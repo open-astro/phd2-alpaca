@@ -12,4 +12,10 @@ SRCDIRS=(
 )
 readarray -t files < <(find "${SRCDIRS[@]}" -name '*.cpp' -o -name '*.h')
 
-clang-format -i "${files[@]}"
+CLANG_FORMAT=$(command -v clang-format-18 || command -v clang-format || true)
+if [ -z "$CLANG_FORMAT" ]; then
+    echo "Error: clang-format not found. Install clang-format-18 (apt install clang-format-18) or pip install clang-format==18.1.8"
+    exit 1
+fi
+
+"$CLANG_FORMAT" -i "${files[@]}"

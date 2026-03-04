@@ -42,7 +42,7 @@
 
 namespace
 {
-    bool s_profileWizardActive = false;
+bool s_profileWizardActive = false;
 }
 
 bool IsProfileWizardActive()
@@ -276,8 +276,8 @@ ProfileWizard::ProfileWizard(wxWindow *parent, bool showGreeting)
     // Gear label and combo box
     m_pGearGrid = new wxFlexGridSizer(2, 2, 5, 15);
     m_pGearLabel = new wxStaticText(this, wxID_ANY, "Temp:", wxDefaultPosition, wxDefaultSize);
-    m_pGearChoice = new wxChoice(this, ID_COMBO, wxDefaultPosition, wxSize(265, -1),
-                                 GuideCamera::GuideCameraList(), 0, wxDefaultValidator, _("Gear"));
+    m_pGearChoice = new wxChoice(this, ID_COMBO, wxDefaultPosition, wxSize(265, -1), GuideCamera::GuideCameraList(), 0,
+                                 wxDefaultValidator, _("Gear"));
     m_pGearGrid->Add(m_pGearLabel, 1, wxALIGN_LEFT);
     m_pGearGrid->Add(m_pGearChoice, 1, wxLEFT, 20);
     m_pDeviceLabel = new wxStaticText(this, wxID_ANY, _("Device Id:"), wxDefaultPosition, wxDefaultSize);
