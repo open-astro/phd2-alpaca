@@ -207,51 +207,6 @@ struct FileDropTarget : public wxFileDropTarget
     }
 };
 
-static bool ShowOpenAstroDisclaimer(wxWindow *parent)
-{
-    wxDialog dlg(parent, wxID_ANY, _("OpenAstro Alpaca Support"), wxDefaultPosition, wxDefaultSize,
-                 wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
-    wxBoxSizer *top = new wxBoxSizer(wxVERTICAL);
-
-#include "icons/oa512.png.h"
-    wxImage logoImg(wxBitmap(wxBITMAP_PNG_FROM_DATA(oa512)).ConvertToImage());
-    int w = logoImg.GetWidth();
-    int h = logoImg.GetHeight();
-    if (w > 0 && h > 0)
-    {
-        int maxDim = 160;
-        double scale = (double) maxDim / (double) wxMax(w, h);
-        int newW = wxMax(1, (int) (w * scale));
-        int newH = wxMax(1, (int) (h * scale));
-        logoImg = logoImg.Scale(newW, newH, wxIMAGE_QUALITY_HIGH);
-        wxBitmap logoBmp(logoImg);
-        wxIcon dlgIcon;
-        dlgIcon.CopyFromBitmap(logoBmp);
-        dlg.SetIcon(dlgIcon);
-        top->Add(new wxStaticBitmap(&dlg, wxID_ANY, logoBmp),
-                 wxSizerFlags().Align(wxALIGN_CENTER).Border(wxTOP | wxLEFT | wxRIGHT, 12));
-    }
-
-    wxStaticText *text = new wxStaticText(
-        &dlg, wxID_ANY,
-        _("OpenAstro private build with Alpaca support only.\nThis is not an official PHD2 build and is supported by OpenAstro."));
-    text->Wrap(420);
-    top->Add(text, wxSizerFlags().Align(wxALIGN_CENTER).Border(wxALL, 12));
-
-    wxBoxSizer *btnSizer = new wxBoxSizer(wxHORIZONTAL);
-    wxButton *ok = new wxButton(&dlg, wxID_OK, _("I Understand"));
-    wxButton *cancel = new wxButton(&dlg, wxID_CANCEL, _("Quit"));
-    btnSizer->Add(ok, wxSizerFlags().Border(wxRIGHT, 10));
-    btnSizer->Add(cancel);
-    top->Add(btnSizer, wxSizerFlags().Align(wxALIGN_CENTER).Border(wxBOTTOM, 12));
-
-    dlg.SetSizerAndFit(top);
-    dlg.CentreOnParent();
-    dlg.SetDefaultItem(ok);
-
-    return dlg.ShowModal() == wxID_OK;
-}
-
 // ---------------------- Main Frame -------------------------------------
 // frame constructor
 MyFrame::MyFrame()
@@ -460,12 +415,6 @@ MyFrame::MyFrame()
 
     // this forces force a resize of MainToolbar in case size changed from the saved perspective
     MainToolbar->Realize();
-
-    if (!ShowOpenAstroDisclaimer(this))
-    {
-        wxGetApp().TerminateApp();
-        return;
-    }
 }
 
 MyFrame::~MyFrame()

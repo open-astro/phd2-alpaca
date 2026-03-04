@@ -400,26 +400,11 @@ static void SetMatchingSelection(wxChoice *ctrl, const wxString& val)
     }
 }
 
-static wxArrayString FilterAlpacaOptions(const wxArrayString& options)
-{
-    wxArrayString filtered;
-    for (const auto& option : options)
-    {
-        if (option.CmpNoCase(_("None")) == 0)
-            filtered.Add(option);
-        else if (option.Upper().Contains("ALPACA"))
-            filtered.Add(option);
-    }
-    if (filtered.IsEmpty())
-        filtered.Add(_("None"));
-    return filtered;
-}
-
 static void LoadChoices(wxChoice *ctl, const wxArrayString& ary)
 {
     ctl->Freeze();
     ctl->Clear();
-    ctl->Append(FilterAlpacaOptions(ary));
+    ctl->Append(ary);
     ctl->Thaw();
 }
 
