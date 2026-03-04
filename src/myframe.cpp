@@ -346,7 +346,7 @@ MyFrame::MyFrame()
     m_rawImageModeWarningDone = false;
 
     UpdateTitle();
-    StatusMsg(_("PHD2 brought to you by OpenAstro with Alpaca Support Only"));
+    StatusMsg(_("OpenAstro PHD2 - Alpaca and full device support"));
 
     SetupHelpFile();
 

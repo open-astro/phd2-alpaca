@@ -77,9 +77,9 @@
 #include <math.h>
 #include <stdarg.h>
 
-#define APPNAME _T("PHD2 Guiding")
-#define PHDVERSION _T("2.6.13")
-#define PHDSUBVER _T("dev8")
+#define APPNAME _T("OpenAstro PHD2")
+#define PHDVERSION _T("1.0.0")
+#define PHDSUBVER _T("")
 #define FULLVER PHDVERSION PHDSUBVER
 
 #if defined(__WINDOWS__)
