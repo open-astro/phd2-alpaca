@@ -1,14 +1,12 @@
 # PHD2 Installer Build Script for Windows
 # This script builds PHD2 and creates an installer using InnoSetup
-
-param(
-    [ValidateSet("x64", "x86")]
-    [string]$Architecture = "x64"
-)
+#
+# Builds x86 only to match official PHD2 (C:\Program Files (x86)\PHDGuiding2\) and to
+# get the full camera list in the wizard (Atik, LE webcams, WDM, etc. are 32-bit only in cameras.h).
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "Building PHD2 Installer for $Architecture architecture" -ForegroundColor Green
+Write-Host "Building PHD2 Installer (x86)" -ForegroundColor Green
 
 # Determine paths
 if ($PSScriptRoot) {
@@ -45,18 +43,11 @@ if ($subverMatch.Success) {
 
 Write-Host "Detected version: $fullVersion" -ForegroundColor Green
 
-# Set up build directory and architecture
-if ($Architecture -eq "x64") {
-    $BuildDir = "tmp64"
-    $CMakeArch = "x64"
-    $InstallerArch = "-x64"
-    $InstallerTemplate = "phd2-x64.iss.in"
-} else {
-    $BuildDir = "tmp"
-    $CMakeArch = "Win32"
-    $InstallerArch = ""
-    $InstallerTemplate = "phd2-x86.iss.in"
-}
+# x86 only (matches official PHD2 release)
+$BuildDir = "tmp"
+$CMakeArch = "Win32"
+$InstallerArch = ""
+$InstallerTemplate = "phd2-x86.iss.in"
 
 # Clean build directory to ensure a fresh build each run
 if (Test-Path $BuildDir) {
