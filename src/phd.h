@@ -216,6 +216,8 @@ class PhdApp : public wxApp
     wxSingleInstanceChecker *m_instanceChecker;
     long m_instanceNumber;
     bool m_resetConfig;
+    bool m_headless;
+    bool m_headlessAutoConnect;
     wxString m_resourcesDir;
     wxDateTime m_logFileTime;
 
@@ -235,6 +237,7 @@ public:
     virtual bool Yield(bool onlyIfNeeded = false);
     static void ExecInMainThread(std::function<void()> func);
     int GetInstanceNumber() const { return m_instanceNumber; }
+    bool IsHeadless() const { return m_headless; }
     const wxString& GetPHDResourcesDir() const { return m_resourcesDir; }
     wxString GetLocalesDir() const;
     const wxLocale& GetLocale() const { return m_locale; }

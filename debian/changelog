@@ -1,4 +1,33 @@
-phd2 (1.0.0) stabledo a; urgency=low
+phd2 (1.1.0) stable; urgency=low
+
+  * Headless runtime baseline:
+    - add CLI flags `--headless` and `--headless-auto-connect`
+    - force server mode in headless startup path
+    - support auto-connect of currently selected equipment at startup
+  * Add Linux systemd unit example for headless operation:
+    - packaging/systemd/phd2-headless.service
+  * JSON-RPC compatibility expansion for PINS/NINA headless integration:
+    - add/get selection methods for mount, camera, camera id, INDI mount/camera drivers
+    - add/get camera bit depth methods
+    - add `get_equipment_choices`
+    - add/get selection methods for aux mount, AO, and rotator
+  * JSON-RPC contract hardening:
+    - reject all selection changes while equipment is connected
+    - validate invalid selection params consistently (`invalid params`)
+    - expand `get_connected` coverage to include aux mount, AO, and rotator state
+  * Add JSON-RPC smoke test utility:
+    - scripts/phd2_rpc_smoke.py
+    - covers positive and negative compatibility checks
+  * Developer documentation:
+    - add doc/jsonrpc_api.md with method-by-method JSON-RPC reference
+    - document transport framing, error model, events, and selection safety rules
+    - link API reference from PHD2_Headless_GuideLoop_API_Spec.md
+  * Update headless/API spec with implementation status snapshot and
+    compatibility contract details.
+
+ -- Joey Troy <joey.troy@gmail.com>  Thu, 05 Mar 2026 18:00:00 +0000
+
+phd2 (1.0.0) stable; urgency=low
 
   * Release 1.0.0 (phd2-alpaca / OpenAstro PHD2).
   * Linux: add build-deb.sh for building .deb on Ubuntu, Kubuntu, Debian,
@@ -2480,4 +2509,3 @@ phd2 (2.5.0) stable; urgency=low
   * Initial tagging
 
  -- andy.galasso <andy.galasso@gmail.com>  Sat, 11 Apr 2015 20:03:33 +0000
-

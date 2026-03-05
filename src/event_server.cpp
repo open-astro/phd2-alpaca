@@ -797,10 +797,483 @@ static void get_current_equipment(JObj& response, const json_value *params)
     response << jrpc_result(t);
 }
 
+static JAry json_string_array(const wxArrayString& choices)
+{
+    JAry ary;
+    for (unsigned int i = 0; i < choices.Count(); i++)
+        ary << ('"' + json_escape(choices[i]) + '"');
+    return ary;
+}
+
+static bool DeviceSelectionMatches(const wxString& val, const wxString& item)
+{
+    if (val.Contains("INDI"))
+        return item.Contains("INDI");
+    return val == item;
+}
+
+static bool FindMatchingChoice(const wxArrayString& choices, const wxString& requested, wxString *choice)
+{
+    if (requested.IsEmpty())
+        return false;
+
+    for (unsigned int i = 0; i < choices.Count(); i++)
+    {
+        if (choices[i] == requested)
+        {
+            *choice = choices[i];
+            return true;
+        }
+    }
+
+    for (unsigned int i = 0; i < choices.Count(); i++)
+    {
+        if (choices[i].CmpNoCase(requested) == 0)
+        {
+            *choice = choices[i];
+            return true;
+        }
+    }
+
+    for (unsigned int i = 0; i < choices.Count(); i++)
+    {
+        if (DeviceSelectionMatches(requested, choices[i]))
+        {
+            *choice = choices[i];
+            return true;
+        }
+    }
+
+    if (requested.CmpNoCase("INDI") == 0 || requested.CmpNoCase("INDI Camera") == 0 || requested.CmpNoCase("INDI Mount") == 0)
+    {
+        for (unsigned int i = 0; i < choices.Count(); i++)
+        {
+            if (choices[i].Contains("INDI"))
+            {
+                *choice = choices[i];
+                return true;
+            }
+        }
+    }
+
+    if (requested.CmpNoCase("Alpaca") == 0)
+    {
+        for (unsigned int i = 0; i < choices.Count(); i++)
+        {
+            if (choices[i].Contains("Alpaca"))
+            {
+                *choice = choices[i];
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+static bool any_equipment_connected()
+{
+    return (pCamera && pCamera->Connected) || (pMount && pMount->IsConnected()) ||
+           (pSecondaryMount && pSecondaryMount->IsConnected()) || (pRotator && pRotator->IsConnected()) ||
+           (TheAO() && TheAO()->IsConnected()) || (pFrame->pGearDialog->AuxScope() && pFrame->pGearDialog->AuxScope()->IsConnected());
+}
+
+static wxString extract_bracketed_driver_name(const wxString& selection)
+{
+    int lbracket = selection.Find('[');
+    int rbracket = selection.Find(']', true);
+    if (lbracket == wxNOT_FOUND || rbracket == wxNOT_FOUND || rbracket <= lbracket + 1)
+        return wxEmptyString;
+    return selection.Mid(lbracket + 1, rbracket - lbracket - 1);
+}
+
+static void apply_selection_to_control(int choiceControlId, const wxArrayString& choices, const wxString& selectedChoice)
+{
+    wxWindow *wnd = pFrame->pGearDialog->FindWindow(choiceControlId);
+    wxChoice *ctrl = wxDynamicCast(wnd, wxChoice);
+    if (!ctrl)
+        return;
+
+    ctrl->Freeze();
+    ctrl->Clear();
+    ctrl->Append(choices);
+    ctrl->SetStringSelection(selectedChoice);
+    ctrl->Thaw();
+
+    wxCommandEvent evt(wxEVT_CHOICE, choiceControlId);
+    evt.SetEventObject(ctrl);
+    evt.SetString(selectedChoice);
+    pFrame->pGearDialog->GetEventHandler()->ProcessEvent(evt);
+}
+
+static wxString selected_camera_choice()
+{
+    wxString camera = pConfig->Profile.GetString("/camera/LastMenuChoice", wxEmptyString);
+    if (camera.IsEmpty())
+        camera = pConfig->Profile.GetString("/camera/LastMenuchoice", _("None"));
+    if (camera.IsEmpty())
+        camera = _("None");
+    return camera;
+}
+
+static void get_equipment_choices(JObj& response, const json_value *params)
+{
+    JObj t;
+    JAry cameras = json_string_array(GuideCamera::GuideCameraList());
+    JAry mounts = json_string_array(Scope::MountList());
+    JAry auxMounts = json_string_array(Scope::AuxMountList());
+    JAry aos = json_string_array(StepGuider::AOList());
+    JAry rotators = json_string_array(Rotator::RotatorList());
+
+    t << NV("camera", cameras) << NV("mount", mounts) << NV("aux_mount", auxMounts) << NV("AO", aos) << NV("rotator", rotators);
+    response << jrpc_result(t);
+}
+
+static void get_selected_mount(JObj& response, const json_value *params)
+{
+    response << jrpc_result(pConfig->Profile.GetString("/scope/LastMenuChoice", _("None")));
+}
+
+static void get_selected_indi_mount_driver(JObj& response, const json_value *params)
+{
+    response << jrpc_result(pConfig->Profile.GetString("/indi/INDImount", wxEmptyString));
+}
+
+static void set_selected_mount(JObj& response, const json_value *params)
+{
+    Params p("mount", params);
+    const json_value *mount = p.param("mount");
+    if (!mount || mount->type != JSON_STRING)
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected mount param");
+        return;
+    }
+
+    if (any_equipment_connected())
+    {
+        response << jrpc_error(1, "cannot change mount selection while equipment is connected");
+        return;
+    }
+
+    wxArrayString choices = Scope::MountList();
+    wxString choice;
+    if (!FindMatchingChoice(choices, mount->string_value, &choice))
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "invalid mount selection");
+        return;
+    }
+
+    pConfig->Profile.SetString("/scope/LastMenuChoice", choice);
+    if (choice.Contains("INDI"))
+    {
+        wxString driverName = extract_bracketed_driver_name(choice);
+        if (!driverName.IsEmpty())
+            pConfig->Profile.SetString("/indi/INDImount", driverName);
+    }
+    pConfig->Flush();
+    apply_selection_to_control(GEAR_CHOICE_SCOPE, choices, choice);
+    response << jrpc_result(0);
+}
+
+static void set_selected_indi_mount_driver(JObj& response, const json_value *params)
+{
+    Params p("mount_driver", "mount", "driver", params);
+    const json_value *driver = p.param("mount_driver");
+    if (!driver)
+        driver = p.param("mount");
+    if (!driver)
+        driver = p.param("driver");
+    if (!driver || driver->type != JSON_STRING)
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected mount_driver param");
+        return;
+    }
+
+    if (any_equipment_connected())
+    {
+        response << jrpc_error(1, "cannot change mount selection while equipment is connected");
+        return;
+    }
+
+    pConfig->Profile.SetString("/indi/INDImount", driver->string_value);
+
+    wxString selectedMount = pConfig->Profile.GetString("/scope/LastMenuChoice", _("None"));
+    if (selectedMount.Contains("INDI"))
+    {
+        pConfig->Profile.SetString("/scope/LastMenuChoice", wxString::Format(_("INDI Mount [%s]"), driver->string_value));
+        wxArrayString choices = Scope::MountList();
+        wxString choice;
+        if (FindMatchingChoice(choices, pConfig->Profile.GetString("/scope/LastMenuChoice", _("None")), &choice))
+            apply_selection_to_control(GEAR_CHOICE_SCOPE, choices, choice);
+    }
+
+    pConfig->Flush();
+    response << jrpc_result(0);
+}
+
+static void get_selected_camera(JObj& response, const json_value *params)
+{
+    response << jrpc_result(selected_camera_choice());
+}
+
+static void get_selected_camera_id(JObj& response, const json_value *params)
+{
+    wxString camName = selected_camera_choice();
+    wxString key = GearDialog::CameraSelectionKey(camName);
+    wxString camId = pConfig->Profile.GetString(key, GuideCamera::DEFAULT_CAMERA_ID);
+    response << jrpc_result(camId);
+}
+
+static void get_selected_indi_camera_driver(JObj& response, const json_value *params)
+{
+    response << jrpc_result(pConfig->Profile.GetString("/indi/INDIcam", wxEmptyString));
+}
+
+static void set_selected_camera(JObj& response, const json_value *params)
+{
+    Params p("camera", params);
+    const json_value *camera = p.param("camera");
+    if (!camera || camera->type != JSON_STRING)
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected camera param");
+        return;
+    }
+
+    if (any_equipment_connected())
+    {
+        response << jrpc_error(1, "cannot change camera selection while equipment is connected");
+        return;
+    }
+
+    wxArrayString choices = GuideCamera::GuideCameraList();
+    wxString choice;
+    if (!FindMatchingChoice(choices, camera->string_value, &choice))
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "invalid camera selection");
+        return;
+    }
+
+    pConfig->Profile.SetString("/camera/LastMenuChoice", choice);
+    if (choice.Contains("INDI"))
+    {
+        wxString driverName = extract_bracketed_driver_name(choice);
+        if (!driverName.IsEmpty())
+            pConfig->Profile.SetString("/indi/INDIcam", driverName);
+    }
+    pConfig->Flush();
+    apply_selection_to_control(GEAR_CHOICE_CAMERA, choices, choice);
+    response << jrpc_result(0);
+}
+
+static void set_selected_camera_id(JObj& response, const json_value *params)
+{
+    Params p("camera_id", params);
+    const json_value *cameraId = p.param("camera_id");
+    if (!cameraId || cameraId->type != JSON_STRING)
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected camera_id param");
+        return;
+    }
+
+    wxString camName = selected_camera_choice();
+    wxString key = GearDialog::CameraSelectionKey(camName);
+    pConfig->Profile.SetString(key, cameraId->string_value);
+    pConfig->Flush();
+    response << jrpc_result(0);
+}
+
+static void set_selected_indi_camera_driver(JObj& response, const json_value *params)
+{
+    Params p("camera_driver", "camera", "driver", params);
+    const json_value *driver = p.param("camera_driver");
+    if (!driver)
+        driver = p.param("camera");
+    if (!driver)
+        driver = p.param("driver");
+    if (!driver || driver->type != JSON_STRING)
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected camera_driver param");
+        return;
+    }
+
+    if (any_equipment_connected())
+    {
+        response << jrpc_error(1, "cannot change camera selection while equipment is connected");
+        return;
+    }
+
+    pConfig->Profile.SetString("/indi/INDIcam", driver->string_value);
+
+    wxString selectedCamera = selected_camera_choice();
+    if (selectedCamera.Contains("INDI"))
+    {
+        pConfig->Profile.SetString("/camera/LastMenuChoice", wxString::Format("INDI Camera [%s]", driver->string_value));
+        wxArrayString choices = GuideCamera::GuideCameraList();
+        wxString choice;
+        if (FindMatchingChoice(choices, pConfig->Profile.GetString("/camera/LastMenuChoice", _("None")), &choice))
+            apply_selection_to_control(GEAR_CHOICE_CAMERA, choices, choice);
+    }
+
+    pConfig->Flush();
+    response << jrpc_result(0);
+}
+
+static void get_camera_bitdepth(JObj& response, const json_value *params)
+{
+    int bitDepth = pConfig->Profile.GetInt("/camera/bitdepth", 0);
+    if (bitDepth <= 0 && pCamera)
+        bitDepth = pCamera->BitsPerPixel();
+    response << jrpc_result(bitDepth);
+}
+
+static void set_camera_bitdepth(JObj& response, const json_value *params)
+{
+    Params p("bitdepth", params);
+    const json_value *bitdepth = p.param("bitdepth");
+    if (!bitdepth || bitdepth->type != JSON_INT)
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected bitdepth param");
+        return;
+    }
+
+    if (bitdepth->int_value < 0 || bitdepth->int_value > 32)
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "bitdepth must be in range 0..32");
+        return;
+    }
+
+    pConfig->Profile.SetInt("/camera/bitdepth", bitdepth->int_value);
+    pConfig->Flush();
+    response << jrpc_result(0);
+}
+
+static void get_selected_aux_mount(JObj& response, const json_value *params)
+{
+    response << jrpc_result(pConfig->Profile.GetString("/scope/LastAuxMenuChoice", _("None")));
+}
+
+static void set_selected_aux_mount(JObj& response, const json_value *params)
+{
+    Params p("aux_mount", params);
+    const json_value *auxMount = p.param("aux_mount");
+    if (!auxMount || auxMount->type != JSON_STRING)
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected aux_mount param");
+        return;
+    }
+
+    if (any_equipment_connected())
+    {
+        response << jrpc_error(1, "cannot change aux mount selection while equipment is connected");
+        return;
+    }
+
+    wxArrayString choices = Scope::AuxMountList();
+    wxString choice;
+    if (!FindMatchingChoice(choices, auxMount->string_value, &choice))
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "invalid aux mount selection");
+        return;
+    }
+
+    pConfig->Profile.SetString("/scope/LastAuxMenuChoice", choice);
+    if (choice.Contains("INDI"))
+    {
+        wxString driverName = extract_bracketed_driver_name(choice);
+        if (!driverName.IsEmpty())
+            pConfig->Profile.SetString("/indi/INDImount", driverName);
+    }
+    pConfig->Flush();
+    apply_selection_to_control(GEAR_CHOICE_AUXSCOPE, choices, choice);
+    response << jrpc_result(0);
+}
+
+static void get_selected_ao(JObj& response, const json_value *params)
+{
+    response << jrpc_result(pConfig->Profile.GetString("/stepguider/LastMenuChoice", _("None")));
+}
+
+static void set_selected_ao(JObj& response, const json_value *params)
+{
+    Params p("ao", params);
+    const json_value *ao = p.param("ao");
+    if (!ao || ao->type != JSON_STRING)
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected ao param");
+        return;
+    }
+
+    if (any_equipment_connected())
+    {
+        response << jrpc_error(1, "cannot change AO selection while equipment is connected");
+        return;
+    }
+
+    wxArrayString choices = StepGuider::AOList();
+    wxString choice;
+    if (!FindMatchingChoice(choices, ao->string_value, &choice))
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "invalid AO selection");
+        return;
+    }
+
+    pConfig->Profile.SetString("/stepguider/LastMenuChoice", choice);
+    pConfig->Flush();
+    apply_selection_to_control(GEAR_CHOICE_STEPGUIDER, choices, choice);
+    response << jrpc_result(0);
+}
+
+static void get_selected_rotator(JObj& response, const json_value *params)
+{
+    response << jrpc_result(pConfig->Profile.GetString("/rotator/LastMenuChoice", _("None")));
+}
+
+static void set_selected_rotator(JObj& response, const json_value *params)
+{
+    Params p("rotator", params);
+    const json_value *rotator = p.param("rotator");
+    if (!rotator || rotator->type != JSON_STRING)
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected rotator param");
+        return;
+    }
+
+    if (any_equipment_connected())
+    {
+        response << jrpc_error(1, "cannot change rotator selection while equipment is connected");
+        return;
+    }
+
+    wxArrayString choices = Rotator::RotatorList();
+    wxString choice;
+    if (!FindMatchingChoice(choices, rotator->string_value, &choice))
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "invalid rotator selection");
+        return;
+    }
+
+    pConfig->Profile.SetString("/rotator/LastMenuChoice", choice);
+    if (choice.Contains("INDI"))
+    {
+        wxString driverName = extract_bracketed_driver_name(choice);
+        if (!driverName.IsEmpty())
+            pConfig->Profile.SetString("/indi/INDIrotator", driverName);
+    }
+    pConfig->Flush();
+    apply_selection_to_control(GEAR_CHOICE_ROTATOR, choices, choice);
+    response << jrpc_result(0);
+}
+
 static bool all_equipment_connected()
 {
-    return pCamera && pCamera->Connected && (!pMount || pMount->IsConnected()) &&
-        (!pSecondaryMount || pSecondaryMount->IsConnected());
+    Scope *auxMount = pFrame->pGearDialog ? pFrame->pGearDialog->AuxScope() : nullptr;
+    StepGuider *ao = TheAO();
+    return pCamera && pCamera->Connected &&
+        (!pMount || pMount->IsConnected()) &&
+        (!pSecondaryMount || pSecondaryMount->IsConnected()) &&
+        (!auxMount || auxMount->IsConnected()) &&
+        (!ao || ao->IsConnected()) &&
+        (!pRotator || pRotator->IsConnected());
 }
 
 static void set_profile(JObj& response, const json_value *params)
@@ -2446,6 +2919,25 @@ static bool handle_request(JRpcCall& call)
         { "get_camera_binning", &get_camera_binning },
         { "get_camera_frame_size", &get_camera_frame_size },
         { "get_current_equipment", &get_current_equipment },
+        { "get_equipment_choices", &get_equipment_choices },
+        { "get_selected_mount", &get_selected_mount },
+        { "get_selected_indi_mount_driver", &get_selected_indi_mount_driver },
+        { "set_selected_mount", &set_selected_mount },
+        { "set_selected_indi_mount_driver", &set_selected_indi_mount_driver },
+        { "get_selected_camera", &get_selected_camera },
+        { "get_selected_camera_id", &get_selected_camera_id },
+        { "get_selected_indi_camera_driver", &get_selected_indi_camera_driver },
+        { "set_selected_camera", &set_selected_camera },
+        { "set_selected_camera_id", &set_selected_camera_id },
+        { "set_selected_indi_camera_driver", &set_selected_indi_camera_driver },
+        { "get_camera_bitdepth", &get_camera_bitdepth },
+        { "set_camera_bitdepth", &set_camera_bitdepth },
+        { "get_selected_aux_mount", &get_selected_aux_mount },
+        { "set_selected_aux_mount", &set_selected_aux_mount },
+        { "get_selected_ao", &get_selected_ao },
+        { "set_selected_ao", &set_selected_ao },
+        { "get_selected_rotator", &get_selected_rotator },
+        { "set_selected_rotator", &set_selected_rotator },
         { "get_guide_output_enabled", &get_guide_output_enabled },
         { "set_guide_output_enabled", &set_guide_output_enabled },
         { "get_algo_param_names", &get_algo_param_names },

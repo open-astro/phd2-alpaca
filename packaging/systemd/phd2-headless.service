@@ -1,0 +1,18 @@
+[Unit]
+Description=PHD2 Headless (JSON-RPC server)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=phd2
+Group=phd2
+WorkingDirectory=/var/lib/phd2
+# Current implementation runs wx-based core without showing the main window.
+# On Linux without a desktop session, run under Xvfb.
+ExecStart=/usr/bin/xvfb-run -a /usr/bin/phd2.bin --headless --headless-auto-connect
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

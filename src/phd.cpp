@@ -63,6 +63,8 @@ int YWinSize = 512;
 
 static const wxCmdLineEntryDesc cmdLineDesc[] = {
     { wxCMD_LINE_SWITCH, "?", "help", "display this help and exit" },
+    { wxCMD_LINE_SWITCH, "H", "headless", "run without showing the main GUI window (server forced on)" },
+    { wxCMD_LINE_SWITCH, "A", "headless-auto-connect", "with --headless, auto-connect currently selected equipment" },
     { wxCMD_LINE_OPTION, "i", "instanceNumber", "sets the PHD2 instance number (default = 1)", wxCMD_LINE_VAL_NUMBER,
       wxCMD_LINE_PARAM_OPTIONAL },
     { wxCMD_LINE_OPTION, "l", "load", "load settings from file and exit", wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL },
@@ -121,6 +123,8 @@ struct ExecFuncThreadEvent : public wxThreadEvent
 PhdApp::PhdApp()
 {
     m_resetConfig = false;
+    m_headless = false;
+    m_headlessAutoConnect = false;
     m_instanceNumber = 1;
 #ifdef __linux__
     XInitThreads();
@@ -606,6 +610,12 @@ bool PhdApp::OnInit()
 
     pConfig->InitializeProfile();
 
+    if (m_headless)
+    {
+        // Ensure the event/JSON-RPC server is always enabled in headless mode.
+        pConfig->Global.SetBoolean("/ServerMode", true);
+    }
+
     PhdController::OnAppInit();
 
     ImageLogger::Init();
@@ -615,11 +625,28 @@ bool PhdApp::OnInit()
 
     pFrame = new MyFrame();
 
-    pFrame->Show(true);
-
-    if (pConfig->IsNewInstance() || (pConfig->NumProfiles() == 1 && pFrame->pGearDialog->IsEmptyProfile()))
+    if (m_headless)
     {
-        pFrame->pGearDialog->ShowProfileWizard(); // First-light version of profile wizard
+        pFrame->Show(false);
+
+        if (m_headlessAutoConnect)
+        {
+            wxString errMsg;
+            bool error = pFrame->pGearDialog->ConnectAll(&errMsg);
+            if (error)
+                Debug.Write(wxString::Format("headless: auto-connect failed: %s\n", errMsg));
+            else
+                Debug.Write("headless: auto-connect succeeded\n");
+        }
+    }
+    else
+    {
+        pFrame->Show(true);
+
+        if (pConfig->IsNewInstance() || (pConfig->NumProfiles() == 1 && pFrame->pGearDialog->IsEmptyProfile()))
+        {
+            pFrame->pGearDialog->ShowProfileWizard(); // First-light version of profile wizard
+        }
     }
 
     return true;
@@ -666,6 +693,10 @@ bool PhdApp::OnCmdLineParsed(wxCmdLineParser& parser)
     }
 
     parser.Found("i", &m_instanceNumber);
+    m_headless = parser.Found("headless");
+    m_headlessAutoConnect = parser.Found("headless-auto-connect");
+    if (m_headlessAutoConnect)
+        m_headless = true;
 
     if (parser.Found("l", &s_configPath))
         s_configOp = CONFIG_OP_LOAD;
