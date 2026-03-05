@@ -27,8 +27,9 @@ include /usr/share/dpkg/default.mk
 #	dh_auto_configure -- \
 #	-DCMAKE_LIBRARY_PATH=$(DEB_HOST_MULTIARCH)
 
+# Set PHD2_ALLOW_INDI_1_9=1 in the environment to allow building with system INDI 1.9.x (e.g. Debian/RPi)
 override_dh_auto_configure:
-	dh_auto_configure --  -DUSE_SYSTEM_LIBINDI=1 -DUSE_SYSTEM_GTEST=1 -DUSE_SYSTEM_LIBUSB=1 -DOPENSOURCE_ONLY=1
+	dh_auto_configure -- -DUSE_SYSTEM_LIBINDI=1 -DUSE_SYSTEM_GTEST=1 -DUSE_SYSTEM_LIBUSB=1 -DOPENSOURCE_ONLY=1 $(if $(PHD2_ALLOW_INDI_1_9),-DPHD2_ALLOW_INDI_1_9=1,)
 
 
 

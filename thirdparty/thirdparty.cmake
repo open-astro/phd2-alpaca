@@ -482,9 +482,18 @@ list(APPEND PHD_LINK_EXTERNAL ${wxWidgets_LIBRARIES})
 #
 #############################################
 
+# Allow building with system INDI 1.9.x (e.g. Debian/RPi) at your own risk; default requires 2.0+
+option(PHD2_ALLOW_INDI_1_9 "Allow system INDI 1.9.x (may have API differences)" OFF)
+if(PHD2_ALLOW_INDI_1_9)
+  set(INDI_MIN_VERSION "1.9.0")
+  message(STATUS "PHD2_ALLOW_INDI_1_9: requiring INDI >= ${INDI_MIN_VERSION} (use at your own risk)")
+else()
+  set(INDI_MIN_VERSION "2.0.0")
+endif()
+
 if(USE_SYSTEM_LIBINDI)
   message(STATUS "Using system's libindi")
-  find_package(INDI 2.0.0 REQUIRED)
+  find_package(INDI ${INDI_MIN_VERSION} REQUIRED)
   list(APPEND PHD_LINK_EXTERNAL ${INDI_CLIENT_LIBRARIES})
 
   find_package(ZLIB REQUIRED)

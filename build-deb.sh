@@ -78,18 +78,38 @@ check_deps() {
     if [[ ${#missing[@]} -gt 0 ]]; then
         warn "Missing build dependencies: ${missing[*]}"
         echo ""
-        echo "PHD2 requires libindi-dev >= 2.0. On Ubuntu/Debian it often comes from the INDI PPA:"
-        echo "  sudo add-apt-repository ppa:mutlaqja/ppa"
-        echo "  sudo apt-get update"
-        echo ""
-        echo "Then install build deps (Ubuntu 22.04+ / Debian Bookworm):"
+        # Debian with only libindi-dev too old: short message, deps already installed
+        if [[ -f /etc/os-release ]] && grep -q '^ID=debian' /etc/os-release 2>/dev/null && \
+           [[ ${#missing[@]} -eq 1 ]] && [[ "${missing[0]}" == *"libindi-dev"* ]]; then
+            echo "PHD2 wants libindi-dev >= 2.0; you have ${indi_ver:-unknown}."
+            echo "All other build deps are installed."
+            echo ""
+            echo "Run: $0 --force   to try building with your current libindi-dev."
+            echo "(Or build INDI 2.x from source from indilib.org if the build fails.)"
+            return 1
+        fi
+        if [[ -f /etc/os-release ]] && grep -q '^ID=debian' /etc/os-release 2>/dev/null; then
+            echo "PHD2 requires libindi-dev >= 2.0. On Debian the INDI PPA does not apply."
+            echo "Options: build INDI 2.x from source (e.g. from indilib.org), or try: $0 --force"
+            echo ""
+        else
+            echo "PHD2 requires libindi-dev >= 2.0. On Ubuntu, add the INDI PPA first:"
+            echo "  sudo add-apt-repository ppa:mutlaqja/ppa"
+            echo "  sudo apt-get update"
+            echo ""
+        fi
+        echo "Then install build deps (Ubuntu 22.04+ / Debian Bookworm/Trixie):"
         echo "  sudo apt-get install -y build-essential cmake pkg-config debhelper \\"
         echo "    libwxgtk3.2-dev libcfitsio-dev libopencv-dev libusb-1.0-0-dev \\"
         echo "    libudev-dev libv4l-dev libnova-dev libcurl4-gnutls-dev \\"
         echo "    libindi-dev libeigen3-dev libgtest-dev gettext zlib1g-dev"
         echo ""
         echo "On Raspberry Pi OS or older distros, use libwxgtk3.0-dev instead of libwxgtk3.2-dev."
-        echo "Or run: $0 --install-deps  (after adding the INDI PPA if needed)"
+        if [[ -f /etc/os-release ]] && grep -q '^ID=debian' /etc/os-release 2>/dev/null; then
+            echo "Or run: $0 --install-deps  to install available deps, or $0 --force to try anyway."
+        else
+            echo "Or run: $0 --install-deps  (after adding the INDI PPA on Ubuntu if needed)"
+        fi
         return 1
     fi
     return 0
@@ -99,7 +119,8 @@ install_deps() {
     step "Installing build dependencies..."
     indi_ver=$(dpkg -s libindi-dev 2>/dev/null | awk '/^Version:/ { print $2 }')
     if [[ -z "$indi_ver" ]] || dpkg --compare-versions "$indi_ver" lt 2.0 2>/dev/null; then
-        if [[ -f /etc/os-release ]] && grep -qEi 'ubuntu|debian' /etc/os-release; then
+        # PPA is Ubuntu-only; skip on Debian (add-apt-repository not available)
+        if [[ -f /etc/os-release ]] && grep -q '^ID=ubuntu' /etc/os-release 2>/dev/null && command -v add-apt-repository &>/dev/null; then
             echo ""
             echo "PHD2 needs libindi-dev >= 2.0. On Ubuntu, add the INDI PPA first:"
             echo "  sudo add-apt-repository ppa:mutlaqja/ppa"
@@ -110,6 +131,11 @@ install_deps() {
                 sudo add-apt-repository -y ppa:mutlaqja/ppa
                 sudo apt-get update
             fi
+        elif [[ -f /etc/os-release ]] && grep -q '^ID=debian' /etc/os-release 2>/dev/null; then
+            echo ""
+            echo "On Debian, libindi-dev >= 2.0 may not be in the repos. Installing what is available."
+            echo "If the build fails, build INDI 2.x from source or use: $0 --force"
+            echo ""
         fi
     fi
     sudo apt-get update
@@ -133,10 +159,12 @@ install_deps() {
 # ---------------------------------------------------------------------------
 INSTALL_DEPS=false
 CLEAN=false
+FORCE=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --install-deps) INSTALL_DEPS=true ;;
         --clean)        CLEAN=true ;;
+        --force)        FORCE=true ;;
         -h|--help)
             echo "Usage: $0 [OPTIONS]"
             echo ""
@@ -146,12 +174,14 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --install-deps   Install build dependencies (sudo apt-get) then exit."
             echo "  --clean          Remove build artifacts before building."
+            echo "  --force          Skip build-dependency check (e.g. try with libindi-dev < 2.0 on Debian)."
             echo "  -h, --help       Show this help."
             echo ""
             echo "Examples:"
             echo "  $0                  # Build .deb (deps must be installed)"
             echo "  $0 --install-deps   # Install deps only"
             echo "  $0 --clean          # Clean and build"
+            echo "  $0 --force          # Build anyway (ignore unmet dep check)"
             exit 0
             ;;
         *) err "Unknown option: $1"; ;;
@@ -171,8 +201,12 @@ if ! command -v dpkg-buildpackage &>/dev/null; then
     err "dpkg-buildpackage not found. Install packaging tools: sudo apt-get install dpkg-dev debhelper"
 fi
 
-if ! check_deps; then
-    err "Install dependencies and re-run, or use: $0 --install-deps"
+if ! "$FORCE"; then
+    if ! check_deps; then
+        err "Install dependencies and re-run, or use: $0 --install-deps  (or $0 --force to try anyway)"
+    fi
+else
+    warn "Skipping build dependency check (--force). Build may fail if libindi-dev < 2.0."
 fi
 
 # ---------------------------------------------------------------------------
@@ -189,8 +223,14 @@ fi
 # Build .deb (uses debian/rules: cmake with USE_SYSTEM_LIBINDI=1, OPENSOURCE_ONLY=1)
 # ---------------------------------------------------------------------------
 step "Building PHD2 .deb package..."
-# -us -uc = do not sign source and changes
-dpkg-buildpackage -us -uc -b
+# -us -uc = do not sign source and changes; -d = allow unmet build deps when --force
+if "$FORCE"; then
+    export PHD2_ALLOW_INDI_1_9=1
+    info "PHD2_ALLOW_INDI_1_9=1: allowing system INDI 1.9.x (use at your own risk)"
+    dpkg-buildpackage -us -uc -b -d
+else
+    dpkg-buildpackage -us -uc -b
+fi
 
 # ---------------------------------------------------------------------------
 # Report result
