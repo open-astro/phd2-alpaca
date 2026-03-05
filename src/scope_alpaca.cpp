@@ -288,7 +288,8 @@ bool ScopeAlpaca::Disconnect()
             wxString endpoint = wxString::Format("telescope/%ld/connected", m_deviceNumber);
             wxString params = "Connected=false";
             long errorCode = 0;
-            m_client->Put(endpoint, params, JsonParser(), &errorCode);
+            JsonParser parser;
+            m_client->Put(endpoint, params, parser, &errorCode);
             // Don't fail if disconnect fails - device might already be disconnected
         }
 

@@ -526,14 +526,15 @@ bool CameraAlpaca::Connect(const wxString& camId)
     {
         endpoint = wxString::Format("camera/%ld/binx", m_deviceNumber);
         wxString params = wxString::Format("BinX=%d", HwBinning);
-        if (!m_client->Put(endpoint, params, JsonParser(), &errorCode))
+        JsonParser parser;
+        if (!m_client->Put(endpoint, params, parser, &errorCode))
         {
             Debug.Write(wxString::Format("Alpaca Camera: failed to set BinX, HTTP %ld\n", errorCode));
             return CamConnectFailed(_("The Alpaca camera failed to set binning. See the debug log for more information."));
         }
         endpoint = wxString::Format("camera/%ld/biny", m_deviceNumber);
         params = wxString::Format("BinY=%d", HwBinning);
-        if (!m_client->Put(endpoint, params, JsonParser(), &errorCode))
+        if (!m_client->Put(endpoint, params, parser, &errorCode))
         {
             Debug.Write(wxString::Format("Alpaca Camera: failed to set BinY, HTTP %ld\n", errorCode));
             return CamConnectFailed(_("The Alpaca camera failed to set binning. See the debug log for more information."));
@@ -604,7 +605,8 @@ bool CameraAlpaca::Disconnect()
         wxString endpoint = wxString::Format("camera/%ld/connected", m_deviceNumber);
         wxString params = "Connected=false";
         long errorCode = 0;
-        m_client->Put(endpoint, params, JsonParser(), &errorCode);
+        JsonParser parser;
+        m_client->Put(endpoint, params, parser, &errorCode);
         // Don't fail if disconnect fails - device might already be disconnected
     }
 
@@ -733,14 +735,15 @@ bool CameraAlpaca::Capture(usImage& img, const CaptureParams& captureParams)
         wxString endpoint = wxString::Format("camera/%ld/binx", m_deviceNumber);
         wxString params = wxString::Format("BinX=%d", HwBinning);
         long errorCode = 0;
-        if (!m_client->Put(endpoint, params, JsonParser(), &errorCode))
+        JsonParser parser;
+        if (!m_client->Put(endpoint, params, parser, &errorCode))
         {
             pFrame->Alert(_("The Alpaca camera failed to set binning. See the debug log for more information."));
             return true;
         }
         endpoint = wxString::Format("camera/%ld/biny", m_deviceNumber);
         params = wxString::Format("BinY=%d", HwBinning);
-        if (!m_client->Put(endpoint, params, JsonParser(), &errorCode))
+        if (!m_client->Put(endpoint, params, parser, &errorCode))
         {
             pFrame->Alert(_("The Alpaca camera failed to set binning. See the debug log for more information."));
             return true;
@@ -763,7 +766,8 @@ bool CameraAlpaca::Capture(usImage& img, const CaptureParams& captureParams)
             wxString endpoint = wxString::Format("camera/%ld/startx", m_deviceNumber);
             wxString params = wxString::Format("StartX=%d", roi.GetLeft());
             long errorCode = 0;
-            if (!m_client->Put(endpoint, params, JsonParser(), &errorCode))
+            JsonParser parser;
+            if (!m_client->Put(endpoint, params, parser, &errorCode))
             {
                 Debug.Write(
                     wxString::Format("Alpaca Camera: failed to set StartX, HTTP %ld (ROI may not be supported)\n", errorCode));
@@ -772,7 +776,7 @@ bool CameraAlpaca::Capture(usImage& img, const CaptureParams& captureParams)
 
             endpoint = wxString::Format("camera/%ld/starty", m_deviceNumber);
             params = wxString::Format("StartY=%d", roi.GetTop());
-            if (!m_client->Put(endpoint, params, JsonParser(), &errorCode))
+            if (!m_client->Put(endpoint, params, parser, &errorCode))
             {
                 Debug.Write(
                     wxString::Format("Alpaca Camera: failed to set StartY, HTTP %ld (ROI may not be supported)\n", errorCode));
@@ -780,7 +784,7 @@ bool CameraAlpaca::Capture(usImage& img, const CaptureParams& captureParams)
 
             endpoint = wxString::Format("camera/%ld/numx", m_deviceNumber);
             params = wxString::Format("NumX=%d", roi.GetWidth());
-            if (!m_client->Put(endpoint, params, JsonParser(), &errorCode))
+            if (!m_client->Put(endpoint, params, parser, &errorCode))
             {
                 Debug.Write(
                     wxString::Format("Alpaca Camera: failed to set NumX, HTTP %ld (ROI may not be supported)\n", errorCode));
@@ -788,7 +792,7 @@ bool CameraAlpaca::Capture(usImage& img, const CaptureParams& captureParams)
 
             endpoint = wxString::Format("camera/%ld/numy", m_deviceNumber);
             params = wxString::Format("NumY=%d", roi.GetHeight());
-            if (!m_client->Put(endpoint, params, JsonParser(), &errorCode))
+            if (!m_client->Put(endpoint, params, parser, &errorCode))
             {
                 Debug.Write(
                     wxString::Format("Alpaca Camera: failed to set NumY, HTTP %ld (ROI may not be supported)\n", errorCode));
@@ -1314,7 +1318,8 @@ bool CameraAlpaca::SetCoolerOn(bool on)
     wxString endpoint = wxString::Format("camera/%ld/cooleron", m_deviceNumber);
     wxString params = wxString::Format("CoolerOn=%s", on ? "true" : "false");
     long errorCode = 0;
-    if (!m_client->Put(endpoint, params, JsonParser(), &errorCode))
+    JsonParser parser;
+    if (!m_client->Put(endpoint, params, parser, &errorCode))
     {
         Debug.Write(wxString::Format("Alpaca error turning camera cooler %s, HTTP %ld\n", on ? "on" : "off", errorCode));
         pFrame->Alert(wxString::Format(_("Alpaca error turning camera cooler %s"), on ? _("on") : _("off")));
@@ -1341,7 +1346,8 @@ bool CameraAlpaca::SetCoolerSetpoint(double temperature)
     wxString endpoint = wxString::Format("camera/%ld/setccdtemperature", m_deviceNumber);
     wxString params = wxString::Format("SetCCDTemperature=%.2f", temperature);
     long errorCode = 0;
-    if (!m_client->Put(endpoint, params, JsonParser(), &errorCode))
+    JsonParser parser;
+    if (!m_client->Put(endpoint, params, parser, &errorCode))
     {
         Debug.Write(wxString::Format("Alpaca error setting cooler setpoint, HTTP %ld\n", errorCode));
         return true;

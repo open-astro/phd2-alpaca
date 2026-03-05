@@ -38,6 +38,8 @@
 #if defined(__WINDOWS__)
 # define ROTATOR_ASCOM
 # define ROTATOR_ALPACA
+#elif defined(__linux__) || defined(__FreeBSD__)
+# define ROTATOR_ALPACA
 #endif
 
 #define ROTATOR_INDI

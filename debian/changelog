@@ -1,3 +1,22 @@
+phd2 (1.0.0) stabledo a; urgency=low
+
+  * Release 1.0.0 (phd2-alpaca / OpenAstro PHD2).
+  * Linux: add build-deb.sh for building .deb on Ubuntu, Kubuntu, Debian,
+    and Raspberry Pi OS (amd64, armhf, arm64).
+  * Desktop: update phd2.desktop with OpenAstro PHD2 name and Alpaca
+    support in comment.
+  * Alpaca on Linux: enable Alpaca Mount (GUIDE_ALPACA in scopes.h),
+    Alpaca Camera (ALPACA_CAMERA in cameras.h), and Alpaca Rotator
+    (ROTATOR_ALPACA in rotators.h) for Linux/FreeBSD builds.
+  * Build fixes: use named JsonParser at Put() call sites in cam_alpaca,
+    scope_alpaca, and rotator_alpaca (C++ non-const reference); use
+    forward declarations for AlpacaClient in scope_alpaca.h and
+    rotator_alpaca.h to fix circular includes when building alpaca_client.
+  * Packaging: extend .gitignore for Debian and CMake build artifacts
+    (debian/.debhelper, debian/phd2, obj-*, *.deb, etc.).
+
+ -- Joey Troy <joey.troy@gmail.com>  Wed, 04 Mar 2026 12:00:00 +0000
+
 phd2 (2.6.13dev8) unstable; urgency=low
 
   * Comet tool: disable multi-star guiding when comet tracking is enabled

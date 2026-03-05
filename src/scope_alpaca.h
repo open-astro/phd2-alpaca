@@ -36,7 +36,7 @@
 
 #ifdef GUIDE_ALPACA
 
-# include "alpaca_client.h"
+class AlpacaClient;
 
 class ScopeAlpaca : public Scope
 {

@@ -1,3 +1,22 @@
 TAGS
 /tmp*
 /.vscode
+
+# Debian package build
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/files
+debian/*.debhelper.log
+debian/*.substvars
+debian/phd2/
+
+# dpkg-buildpackage / dh_auto_configure out-of-tree build
+obj-*/
+
+# Built .deb and related files (if built from repo root)
+*.deb
+*.buildinfo
+*.changes
+*.dsc
+*.tar.xz
+*.tar.gz

@@ -195,7 +195,8 @@ bool RotatorAlpaca::Disconnect()
         wxString endpoint = wxString::Format("rotator/%ld/connected", m_deviceNumber);
         wxString params = "Connected=false";
         long errorCode = 0;
-        m_client->Put(endpoint, params, JsonParser(), &errorCode);
+        JsonParser parser;
+        m_client->Put(endpoint, params, parser, &errorCode);
     }
 
     Rotator::Disconnect();

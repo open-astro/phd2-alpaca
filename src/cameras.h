@@ -163,6 +163,7 @@
 #  define SIMULATOR
 #  define OPENCV_CAMERA
 #  define CAM_QHY5
+#  define ALPACA_CAMERA
 #  ifdef HAVE_OGMA_CAMERA
 #   define OGMA_CAMERA
 #  endif
