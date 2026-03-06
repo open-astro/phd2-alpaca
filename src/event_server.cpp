@@ -39,6 +39,11 @@
 #include <sstream>
 #include <string.h>
 
+#if defined(ALPACA_CAMERA) || defined(GUIDE_ALPACA) || defined(ROTATOR_ALPACA)
+# include "alpaca_client.h"
+# include "alpaca_discovery.h"
+#endif
+
 EventServer EvtServer;
 
 // clang-format off
@@ -927,6 +932,510 @@ static void get_equipment_choices(JObj& response, const json_value *params)
 
     t << NV("camera", cameras) << NV("mount", mounts) << NV("aux_mount", auxMounts) << NV("AO", aos) << NV("rotator", rotators);
     response << jrpc_result(t);
+}
+
+static bool json_to_long(const json_value *val, long *out)
+{
+    if (!val)
+        return false;
+    if (val->type == JSON_INT)
+    {
+        *out = static_cast<long>(val->int_value);
+        return true;
+    }
+    if (val->type == JSON_FLOAT)
+    {
+        *out = static_cast<long>(val->float_value);
+        return true;
+    }
+    return false;
+}
+
+static bool parse_device_number_from_display(const wxString& display, long *deviceNumber)
+{
+    // Expected format: "Device <n>: <name>"
+    wxString s = display;
+    s.Trim(true).Trim(false);
+    if (!s.StartsWith("Device "))
+        return false;
+    s = s.Mid(7);
+    long n = 0;
+    if (s.BeforeFirst(':').ToLong(&n))
+    {
+        *deviceNumber = n;
+        return true;
+    }
+    return false;
+}
+
+static void get_indi_server(JObj& response, const json_value *params)
+{
+    JObj t;
+    t << NV("host", pConfig->Profile.GetString("/indi/INDIhost", _("localhost")))
+      << NV("port", static_cast<int>(pConfig->Profile.GetLong("/indi/INDIport", 7624)));
+    response << jrpc_result(t);
+}
+
+static void set_indi_server(JObj& response, const json_value *params)
+{
+    Params p("host", "port", params);
+    const json_value *host = p.param("host");
+    const json_value *port = p.param("port");
+
+    if (any_equipment_connected())
+    {
+        response << jrpc_error(1, "cannot change INDI server while equipment is connected");
+        return;
+    }
+
+    if (!host && !port)
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected host and/or port param");
+        return;
+    }
+
+    if (host)
+    {
+        if (host->type != JSON_STRING || wxString(host->string_value).IsEmpty())
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected non-empty host string");
+            return;
+        }
+        pConfig->Profile.SetString("/indi/INDIhost", host->string_value);
+    }
+
+    if (port)
+    {
+        long indiPort = 0;
+        if (!json_to_long(port, &indiPort) || indiPort < 1 || indiPort > 65535)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected INDI port in range 1..65535");
+            return;
+        }
+        pConfig->Profile.SetLong("/indi/INDIport", indiPort);
+    }
+
+    pConfig->Flush();
+    response << jrpc_result(0);
+}
+
+static void get_alpaca_server(JObj& response, const json_value *params)
+{
+    JObj t;
+    t << NV("host", pConfig->Profile.GetString("/alpaca/host", _("localhost")))
+      << NV("port", static_cast<int>(pConfig->Profile.GetLong("/alpaca/port", 6800)))
+      << NV("camera_device", static_cast<int>(pConfig->Profile.GetLong("/alpaca/camera_device", 0)))
+      << NV("telescope_device", static_cast<int>(pConfig->Profile.GetLong("/alpaca/telescope_device", 0)))
+      << NV("rotator_device", static_cast<int>(pConfig->Profile.GetLong("/alpaca/rotator_device", 0)));
+    response << jrpc_result(t);
+}
+
+static void apply_alpaca_choice_if_selected()
+{
+    wxString host = pConfig->Profile.GetString("/alpaca/host", _("localhost"));
+    long port = pConfig->Profile.GetLong("/alpaca/port", 6800);
+    long cameraDev = pConfig->Profile.GetLong("/alpaca/camera_device", 0);
+    long mountDev = pConfig->Profile.GetLong("/alpaca/telescope_device", 0);
+    long rotatorDev = pConfig->Profile.GetLong("/alpaca/rotator_device", 0);
+
+    wxArrayString camChoices = GuideCamera::GuideCameraList();
+    wxArrayString mountChoices = Scope::MountList();
+    wxArrayString rotChoices = Rotator::RotatorList();
+    wxString resolved;
+
+    wxString selCam = selected_camera_choice();
+    if (selCam.Contains("Alpaca"))
+    {
+        wxString target = wxString::Format("Alpaca Camera [%s:%ld/%ld]", host, port, cameraDev);
+        if (FindMatchingChoice(camChoices, target, &resolved))
+        {
+            pConfig->Profile.SetString("/camera/LastMenuChoice", resolved);
+            apply_selection_to_control(GEAR_CHOICE_CAMERA, camChoices, resolved);
+        }
+    }
+
+    wxString selMount = pConfig->Profile.GetString("/scope/LastMenuChoice", _("None"));
+    if (selMount.Contains("Alpaca"))
+    {
+        wxString target = wxString::Format(_("Alpaca Mount [%s:%ld/%ld]"), host, port, mountDev);
+        if (FindMatchingChoice(mountChoices, target, &resolved))
+        {
+            pConfig->Profile.SetString("/scope/LastMenuChoice", resolved);
+            apply_selection_to_control(GEAR_CHOICE_SCOPE, mountChoices, resolved);
+        }
+    }
+
+    wxString selRot = pConfig->Profile.GetString("/rotator/LastMenuChoice", _("None"));
+    if (selRot.Contains("Alpaca"))
+    {
+        wxString target = wxString::Format("Alpaca Rotator [%s:%ld/%ld]", host, port, rotatorDev);
+        if (FindMatchingChoice(rotChoices, target, &resolved))
+        {
+            pConfig->Profile.SetString("/rotator/LastMenuChoice", resolved);
+            apply_selection_to_control(GEAR_CHOICE_ROTATOR, rotChoices, resolved);
+        }
+    }
+}
+
+static void set_alpaca_server(JObj& response, const json_value *params)
+{
+    Params p("host", "port", "camera_device", "telescope_device", "rotator_device", params);
+    const json_value *host = p.param("host");
+    const json_value *port = p.param("port");
+    const json_value *cameraDevice = p.param("camera_device");
+    const json_value *telescopeDevice = p.param("telescope_device");
+    const json_value *rotatorDevice = p.param("rotator_device");
+
+    if (any_equipment_connected())
+    {
+        response << jrpc_error(1, "cannot change Alpaca server while equipment is connected");
+        return;
+    }
+
+    if (!host && !port && !cameraDevice && !telescopeDevice && !rotatorDevice)
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS,
+                               "expected host/port and/or camera_device/telescope_device/rotator_device params");
+        return;
+    }
+
+    if (host)
+    {
+        if (host->type != JSON_STRING || wxString(host->string_value).IsEmpty())
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected non-empty host string");
+            return;
+        }
+        pConfig->Profile.SetString("/alpaca/host", host->string_value);
+    }
+
+    if (port)
+    {
+        long alpacaPort = 0;
+        if (!json_to_long(port, &alpacaPort) || alpacaPort < 1 || alpacaPort > 65535)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected Alpaca port in range 1..65535");
+            return;
+        }
+        pConfig->Profile.SetLong("/alpaca/port", alpacaPort);
+    }
+
+    auto setDeviceNum = [&](const json_value *val, const char *key, const char *errName) -> bool
+    {
+        if (!val)
+            return true;
+        long n = 0;
+        if (!json_to_long(val, &n) || n < 0)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, wxString::Format("expected %s >= 0", errName));
+            return false;
+        }
+        pConfig->Profile.SetLong(key, n);
+        return true;
+    };
+
+    if (!setDeviceNum(cameraDevice, "/alpaca/camera_device", "camera_device"))
+        return;
+    if (!setDeviceNum(telescopeDevice, "/alpaca/telescope_device", "telescope_device"))
+        return;
+    if (!setDeviceNum(rotatorDevice, "/alpaca/rotator_device", "rotator_device"))
+        return;
+
+    apply_alpaca_choice_if_selected();
+    pConfig->Flush();
+    response << jrpc_result(0);
+}
+
+static bool alpaca_device_type_matches(const wxString& requestedType, const wxString& deviceType)
+{
+    wxString req = requestedType;
+    req.MakeUpper();
+    wxString dtype = deviceType;
+    dtype.MakeUpper();
+
+    if (req.IsEmpty() || req == "ALL")
+        return true;
+    if (req == "CAMERA")
+        return dtype == "CAMERA";
+    if (req == "TELESCOPE" || req == "MOUNT")
+        return dtype == "TELESCOPE" || dtype == "MOUNT";
+    if (req == "ROTATOR")
+        return dtype == "ROTATOR";
+    return false;
+}
+
+static void discover_alpaca_servers(JObj& response, const json_value *params)
+{
+#if defined(ALPACA_CAMERA) || defined(GUIDE_ALPACA) || defined(ROTATOR_ALPACA)
+    Params p("num_queries", "queries", "timeout_seconds", "timeout", params);
+    int numQueries = 2;
+    int timeoutSeconds = 2;
+    long val = 0;
+    const json_value *jv = p.param("num_queries");
+    if (!jv)
+        jv = p.param("queries");
+    if (jv)
+    {
+        if (!json_to_long(jv, &val) || val < 1 || val > 20)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "num_queries must be in range 1..20");
+            return;
+        }
+        numQueries = static_cast<int>(val);
+    }
+    jv = p.param("timeout_seconds");
+    if (!jv)
+        jv = p.param("timeout");
+    if (jv)
+    {
+        if (!json_to_long(jv, &val) || val < 1 || val > 30)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "timeout_seconds must be in range 1..30");
+            return;
+        }
+        timeoutSeconds = static_cast<int>(val);
+    }
+
+    wxArrayString servers = AlpacaDiscovery::DiscoverServers(numQueries, timeoutSeconds);
+    JAry serverArray = json_string_array(servers);
+    response << jrpc_result(serverArray);
+#else
+    response << jrpc_error(1, "Alpaca support is not enabled in this build");
+#endif
+}
+
+static void query_alpaca_devices(JObj& response, const json_value *params)
+{
+#if defined(ALPACA_CAMERA) || defined(GUIDE_ALPACA) || defined(ROTATOR_ALPACA)
+    Params p("host", "port", "device_type", "type", params);
+    const json_value *hostv = p.param("host");
+    const json_value *portv = p.param("port");
+    const json_value *typev = p.param("device_type");
+    if (!typev)
+        typev = p.param("type");
+
+    wxString host = pConfig->Profile.GetString("/alpaca/host", _("localhost"));
+    long port = pConfig->Profile.GetLong("/alpaca/port", 6800);
+    wxString requestedType = "ALL";
+
+    if (hostv)
+    {
+        if (hostv->type != JSON_STRING || wxString(hostv->string_value).IsEmpty())
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected non-empty host string");
+            return;
+        }
+        host = hostv->string_value;
+    }
+    if (portv)
+    {
+        if (!json_to_long(portv, &port) || port < 1 || port > 65535)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected port in range 1..65535");
+            return;
+        }
+    }
+    if (typev)
+    {
+        if (typev->type != JSON_STRING)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected device_type string");
+            return;
+        }
+        requestedType = wxString(typev->string_value).Upper();
+        if (!(requestedType == "ALL" || requestedType == "CAMERA" || requestedType == "TELESCOPE" ||
+              requestedType == "MOUNT" || requestedType == "ROTATOR"))
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "device_type must be one of: all,camera,telescope,mount,rotator");
+            return;
+        }
+    }
+
+    AlpacaClient client(host, port, 0);
+    JsonParser parser;
+    long errorCode = 0;
+    if (!client.Get("management/v1/configureddevices", parser, &errorCode))
+    {
+        response << jrpc_error(1, wxString::Format("failed to query configured devices from %s:%ld (error %ld)", host, port,
+                                                   errorCode));
+        return;
+    }
+
+    const json_value *root = parser.Root();
+    if (!root)
+    {
+        response << jrpc_error(1, "invalid response from server");
+        return;
+    }
+
+    const json_value *valueArray = nullptr;
+    if (root->type == JSON_OBJECT)
+    {
+        json_for_each(n, root)
+        {
+            if (n->name && strcmp(n->name, "Value") == 0 && n->type == JSON_ARRAY)
+            {
+                valueArray = n;
+                break;
+            }
+        }
+    }
+    else if (root->type == JSON_ARRAY)
+    {
+        valueArray = root;
+    }
+
+    if (!valueArray || valueArray->type != JSON_ARRAY)
+    {
+        response << jrpc_error(1, "invalid response from server");
+        return;
+    }
+
+    JAry devices;
+    json_for_each(deviceNode, valueArray)
+    {
+        if (deviceNode->type != JSON_OBJECT)
+            continue;
+
+        long deviceNum = -1;
+        wxString deviceType;
+        wxString deviceName;
+
+        json_for_each(prop, deviceNode)
+        {
+            if (!prop->name)
+                continue;
+            wxString propName(prop->name, wxConvUTF8);
+            if (propName.CmpNoCase("DeviceNumber") == 0)
+            {
+                long n = 0;
+                if (json_to_long(prop, &n))
+                    deviceNum = n;
+            }
+            else if (propName.CmpNoCase("DeviceType") == 0 || propName.CmpNoCase("Type") == 0)
+            {
+                if (prop->type == JSON_STRING)
+                    deviceType = wxString(prop->string_value, wxConvUTF8);
+            }
+            else if (propName.CmpNoCase("DeviceName") == 0 || propName.CmpNoCase("Name") == 0)
+            {
+                if (prop->type == JSON_STRING)
+                    deviceName = wxString(prop->string_value, wxConvUTF8);
+            }
+        }
+
+        if (deviceNum < 0)
+            continue;
+        if (!alpaca_device_type_matches(requestedType, deviceType))
+            continue;
+
+        wxString display = deviceName.IsEmpty() ? wxString::Format(_("Device %ld"), deviceNum) : deviceName;
+        JObj d;
+        d << NV("device_number", static_cast<int>(deviceNum)) << NV("device_type", deviceType) << NV("device_name", deviceName)
+          << NV("display_name", display) << NV("display", wxString::Format("Device %ld: %s", deviceNum, display));
+        devices << d;
+    }
+
+    response << jrpc_result(devices);
+#else
+    response << jrpc_error(1, "Alpaca support is not enabled in this build");
+#endif
+}
+
+static void set_selected_alpaca_device(JObj& response, const json_value *params)
+{
+    Params p("device_type", "type", "device_number", "device", "display", params);
+    const json_value *typev = p.param("device_type");
+    if (!typev)
+        typev = p.param("type");
+    const json_value *numv = p.param("device_number");
+    if (!numv)
+        numv = p.param("device");
+    const json_value *displayv = p.param("display");
+
+    if (!typev || typev->type != JSON_STRING)
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected device_type string");
+        return;
+    }
+    if (any_equipment_connected())
+    {
+        response << jrpc_error(1, "cannot change Alpaca selection while equipment is connected");
+        return;
+    }
+
+    wxString type = wxString(typev->string_value).Upper();
+    if (!(type == "CAMERA" || type == "TELESCOPE" || type == "MOUNT" || type == "ROTATOR"))
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "device_type must be one of: camera,telescope,mount,rotator");
+        return;
+    }
+
+    long deviceNum = -1;
+    if (numv)
+    {
+        if (!json_to_long(numv, &deviceNum) || deviceNum < 0)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected device_number >= 0");
+            return;
+        }
+    }
+    else if (displayv)
+    {
+        if (displayv->type != JSON_STRING || !parse_device_number_from_display(displayv->string_value, &deviceNum))
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "could not parse device number from display");
+            return;
+        }
+    }
+    else
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected device_number or display param");
+        return;
+    }
+
+    if (type == "CAMERA")
+    {
+        pConfig->Profile.SetLong("/alpaca/camera_device", deviceNum);
+        wxArrayString choices = GuideCamera::GuideCameraList();
+        wxString target = wxString::Format("Alpaca Camera [%s:%ld/%ld]", pConfig->Profile.GetString("/alpaca/host", _("localhost")),
+                                           pConfig->Profile.GetLong("/alpaca/port", 6800), deviceNum);
+        wxString choice;
+        if (FindMatchingChoice(choices, target, &choice))
+        {
+            pConfig->Profile.SetString("/camera/LastMenuChoice", choice);
+            apply_selection_to_control(GEAR_CHOICE_CAMERA, choices, choice);
+        }
+    }
+    else if (type == "TELESCOPE" || type == "MOUNT")
+    {
+        pConfig->Profile.SetLong("/alpaca/telescope_device", deviceNum);
+        wxArrayString choices = Scope::MountList();
+        wxString target = wxString::Format(_("Alpaca Mount [%s:%ld/%ld]"), pConfig->Profile.GetString("/alpaca/host", _("localhost")),
+                                           pConfig->Profile.GetLong("/alpaca/port", 6800), deviceNum);
+        wxString choice;
+        if (FindMatchingChoice(choices, target, &choice))
+        {
+            pConfig->Profile.SetString("/scope/LastMenuChoice", choice);
+            apply_selection_to_control(GEAR_CHOICE_SCOPE, choices, choice);
+        }
+    }
+    else
+    {
+        pConfig->Profile.SetLong("/alpaca/rotator_device", deviceNum);
+        wxArrayString choices = Rotator::RotatorList();
+        wxString target = wxString::Format("Alpaca Rotator [%s:%ld/%ld]", pConfig->Profile.GetString("/alpaca/host", _("localhost")),
+                                           pConfig->Profile.GetLong("/alpaca/port", 6800), deviceNum);
+        wxString choice;
+        if (FindMatchingChoice(choices, target, &choice))
+        {
+            pConfig->Profile.SetString("/rotator/LastMenuChoice", choice);
+            apply_selection_to_control(GEAR_CHOICE_ROTATOR, choices, choice);
+        }
+    }
+
+    pConfig->Flush();
+    response << jrpc_result(0);
 }
 
 static void get_selected_mount(JObj& response, const json_value *params)
@@ -2919,6 +3428,13 @@ static bool handle_request(JRpcCall& call)
         { "get_camera_binning", &get_camera_binning },
         { "get_camera_frame_size", &get_camera_frame_size },
         { "get_current_equipment", &get_current_equipment },
+        { "get_indi_server", &get_indi_server },
+        { "set_indi_server", &set_indi_server },
+        { "get_alpaca_server", &get_alpaca_server },
+        { "set_alpaca_server", &set_alpaca_server },
+        { "discover_alpaca_servers", &discover_alpaca_servers },
+        { "query_alpaca_devices", &query_alpaca_devices },
+        { "set_selected_alpaca_device", &set_selected_alpaca_device },
         { "get_equipment_choices", &get_equipment_choices },
         { "get_selected_mount", &get_selected_mount },
         { "get_selected_indi_mount_driver", &get_selected_indi_mount_driver },

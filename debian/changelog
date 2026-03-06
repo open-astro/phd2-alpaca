@@ -11,16 +11,27 @@ phd2 (1.1.0) stable; urgency=low
     - add/get camera bit depth methods
     - add `get_equipment_choices`
     - add/get selection methods for aux mount, AO, and rotator
+    - add INDI server config methods: `get_indi_server`, `set_indi_server`
+    - add Alpaca config/discovery methods:
+      `get_alpaca_server`, `set_alpaca_server`,
+      `discover_alpaca_servers`, `query_alpaca_devices`,
+      `set_selected_alpaca_device`
+    - support Alpaca device selection by both numeric id and display label
   * JSON-RPC contract hardening:
     - reject all selection changes while equipment is connected
+    - reject INDI/Alpaca server configuration changes while equipment is connected
     - validate invalid selection params consistently (`invalid params`)
     - expand `get_connected` coverage to include aux mount, AO, and rotator state
   * Add JSON-RPC smoke test utility:
     - scripts/phd2_rpc_smoke.py
-    - covers positive and negative compatibility checks
+    - covers positive and negative compatibility checks, including INDI/Alpaca config calls
+  * Add JSON-RPC equipment choice listing helper:
+    - scripts/phd2_list_equipment_choices.py
+    - prints camera, mount, aux mount, AO, and rotator options from a running instance
   * Developer documentation:
     - add doc/jsonrpc_api.md with method-by-method JSON-RPC reference
-    - document transport framing, error model, events, and selection safety rules
+    - document transport framing, error model, events, selection safety rules,
+      and INDI/Alpaca discovery/configuration methods
     - link API reference from PHD2_Headless_GuideLoop_API_Spec.md
   * Update headless/API spec with implementation status snapshot and
     compatibility contract details.

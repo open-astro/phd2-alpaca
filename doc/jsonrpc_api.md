@@ -121,6 +121,14 @@ Common errors:
 - `get_current_equipment`: current device names + connected state
 - `get_equipment_choices`: available profile choices for `camera`, `mount`, `aux_mount`, `AO`, `rotator`
 
+INDI server config:
+
+- `get_indi_server`
+  - result: `{"host":"<hostname>","port":<int>}`
+- `set_indi_server`
+  - params: `{"host":"<hostname>","port":<int>}` (`host` and `port` may be provided individually)
+  - rejected while equipment is connected
+
 Mount selection:
 
 - `get_selected_mount`
@@ -148,6 +156,40 @@ Aux/AO/Rotator selection:
 - `get_selected_rotator`
 - `set_selected_rotator` with params `{"rotator":"<choice>"}`
 
+Alpaca discovery/config:
+
+- `discover_alpaca_servers`
+  - optional params: `{"num_queries":<int>,"timeout_seconds":<int>}`
+  - result: array of server strings, e.g. `["192.168.1.154:6800"]`
+- `query_alpaca_devices`
+  - params: `{"host":"<hostname>","port":<int>,"device_type":"all|camera|telescope|mount|rotator"}`
+  - `host`/`port` are optional (defaults from profile)
+  - result: array of objects:
+    - `device_number`
+    - `device_type`
+    - `device_name`
+    - `display_name`
+    - `display` (format: `Device <n>: <name>`)
+- `get_alpaca_server`
+  - result:
+    - `host`
+    - `port`
+    - `camera_device`
+    - `telescope_device`
+    - `rotator_device`
+- `set_alpaca_server`
+  - params:
+    - `host`, `port`
+    - optional `camera_device`, `telescope_device`, `rotator_device`
+  - updates profile-backed Alpaca server/device settings
+  - rejected while equipment is connected
+- `set_selected_alpaca_device`
+  - params:
+    - `{"device_type":"camera|telescope|mount|rotator","device_number":<int>}`
+    - or `{"device_type":"...","display":"Device <n>: <name>"}`
+  - updates per-type Alpaca device id and applies matching selection choice when available
+  - rejected while equipment is connected
+
 ## Config Export
 
 - `export_config_settings`: export configuration payload for diagnostics/migration
@@ -165,4 +207,3 @@ Commonly consumed events include:
 - `StartGuiding`
 - `LockPositionSet`, `LockPositionLost`, `LockPositionShiftLimitReached`
 - `ConfigurationChange`
-

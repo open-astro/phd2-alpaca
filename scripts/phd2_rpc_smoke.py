@@ -105,6 +105,10 @@ def main():
         run_check("get_profile", lambda: cli.call("get_profile"))
         run_check("get_connected", lambda: cli.call("get_connected"))
         run_check("get_current_equipment", lambda: cli.call("get_current_equipment"))
+        run_check("get_indi_server", lambda: cli.call("get_indi_server"))
+        run_check("get_alpaca_server", lambda: cli.call("get_alpaca_server"))
+        run_check("discover_alpaca_servers", lambda: cli.call("discover_alpaca_servers", {"num_queries": 1, "timeout_seconds": 1}))
+        run_check("query_alpaca_devices", lambda: cli.call("query_alpaca_devices", {"device_type": "all"}))
 
         choices = run_check("get_equipment_choices", lambda: cli.call("get_equipment_choices")) or {}
         mount_choice = run_check("get_selected_mount", lambda: cli.call("get_selected_mount"))
@@ -144,6 +148,24 @@ def main():
         cam_driver = run_check("get_selected_indi_camera_driver (again)", lambda: cli.call("get_selected_indi_camera_driver"))
         if isinstance(cam_driver, str):
             run_check("set_selected_indi_camera_driver", lambda: cli.call("set_selected_indi_camera_driver", {"camera_driver": cam_driver}))
+
+        still_connected = run_check("get_connected (config checks)", lambda: cli.call("get_connected"))
+        if not still_connected:
+            indi_cfg = run_check("get_indi_server (again)", lambda: cli.call("get_indi_server"))
+            if isinstance(indi_cfg, dict):
+                if "host" in indi_cfg:
+                    run_check("set_indi_server host", lambda: cli.call("set_indi_server", {"host": indi_cfg["host"]}))
+                if "port" in indi_cfg:
+                    run_check("set_indi_server port", lambda: cli.call("set_indi_server", {"port": indi_cfg["port"]}))
+
+            alpaca_cfg = run_check("get_alpaca_server (again)", lambda: cli.call("get_alpaca_server"))
+            if isinstance(alpaca_cfg, dict):
+                payload = {}
+                for k in ("host", "port", "camera_device", "telescope_device", "rotator_device"):
+                    if k in alpaca_cfg:
+                        payload[k] = alpaca_cfg[k]
+                if payload:
+                    run_check("set_alpaca_server", lambda: cli.call("set_alpaca_server", payload))
 
         # basic presence check for list keys
         for key in ("camera", "mount", "aux_mount", "AO", "rotator"):
