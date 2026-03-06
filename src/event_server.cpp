@@ -879,8 +879,9 @@ static bool FindMatchingChoice(const wxArrayString& choices, const wxString& req
 static bool any_equipment_connected()
 {
     return (pCamera && pCamera->Connected) || (pMount && pMount->IsConnected()) ||
-           (pSecondaryMount && pSecondaryMount->IsConnected()) || (pRotator && pRotator->IsConnected()) ||
-           (TheAO() && TheAO()->IsConnected()) || (pFrame->pGearDialog->AuxScope() && pFrame->pGearDialog->AuxScope()->IsConnected());
+        (pSecondaryMount && pSecondaryMount->IsConnected()) || (pRotator && pRotator->IsConnected()) ||
+        (TheAO() && TheAO()->IsConnected()) ||
+        (pFrame->pGearDialog->AuxScope() && pFrame->pGearDialog->AuxScope()->IsConnected());
 }
 
 static wxString extract_bracketed_driver_name(const wxString& selection)
@@ -1243,8 +1244,8 @@ static void query_alpaca_devices(JObj& response, const json_value *params)
             return;
         }
         requestedType = wxString(typev->string_value).Upper();
-        if (!(requestedType == "ALL" || requestedType == "CAMERA" || requestedType == "TELESCOPE" ||
-              requestedType == "MOUNT" || requestedType == "ROTATOR"))
+        if (!(requestedType == "ALL" || requestedType == "CAMERA" || requestedType == "TELESCOPE" || requestedType == "MOUNT" ||
+              requestedType == "ROTATOR"))
         {
             response << jrpc_error(JSONRPC_INVALID_PARAMS, "device_type must be one of: all,camera,telescope,mount,rotator");
             return;
@@ -1256,8 +1257,8 @@ static void query_alpaca_devices(JObj& response, const json_value *params)
     long errorCode = 0;
     if (!client.Get("management/v1/configureddevices", parser, &errorCode))
     {
-        response << jrpc_error(1, wxString::Format("failed to query configured devices from %s:%ld (error %ld)", host, port,
-                                                   errorCode));
+        response << jrpc_error(
+            1, wxString::Format("failed to query configured devices from %s:%ld (error %ld)", host, port, errorCode));
         return;
     }
 
@@ -1398,8 +1399,9 @@ static void set_selected_alpaca_device(JObj& response, const json_value *params)
     {
         pConfig->Profile.SetLong("/alpaca/camera_device", deviceNum);
         wxArrayString choices = GuideCamera::GuideCameraList();
-        wxString target = wxString::Format("Alpaca Camera [%s:%ld/%ld]", pConfig->Profile.GetString("/alpaca/host", _("localhost")),
-                                           pConfig->Profile.GetLong("/alpaca/port", 6800), deviceNum);
+        wxString target =
+            wxString::Format("Alpaca Camera [%s:%ld/%ld]", pConfig->Profile.GetString("/alpaca/host", _("localhost")),
+                             pConfig->Profile.GetLong("/alpaca/port", 6800), deviceNum);
         wxString choice;
         if (FindMatchingChoice(choices, target, &choice))
         {
@@ -1411,8 +1413,9 @@ static void set_selected_alpaca_device(JObj& response, const json_value *params)
     {
         pConfig->Profile.SetLong("/alpaca/telescope_device", deviceNum);
         wxArrayString choices = Scope::MountList();
-        wxString target = wxString::Format(_("Alpaca Mount [%s:%ld/%ld]"), pConfig->Profile.GetString("/alpaca/host", _("localhost")),
-                                           pConfig->Profile.GetLong("/alpaca/port", 6800), deviceNum);
+        wxString target =
+            wxString::Format(_("Alpaca Mount [%s:%ld/%ld]"), pConfig->Profile.GetString("/alpaca/host", _("localhost")),
+                             pConfig->Profile.GetLong("/alpaca/port", 6800), deviceNum);
         wxString choice;
         if (FindMatchingChoice(choices, target, &choice))
         {
@@ -1424,8 +1427,9 @@ static void set_selected_alpaca_device(JObj& response, const json_value *params)
     {
         pConfig->Profile.SetLong("/alpaca/rotator_device", deviceNum);
         wxArrayString choices = Rotator::RotatorList();
-        wxString target = wxString::Format("Alpaca Rotator [%s:%ld/%ld]", pConfig->Profile.GetString("/alpaca/host", _("localhost")),
-                                           pConfig->Profile.GetLong("/alpaca/port", 6800), deviceNum);
+        wxString target =
+            wxString::Format("Alpaca Rotator [%s:%ld/%ld]", pConfig->Profile.GetString("/alpaca/host", _("localhost")),
+                             pConfig->Profile.GetLong("/alpaca/port", 6800), deviceNum);
         wxString choice;
         if (FindMatchingChoice(choices, target, &choice))
         {
@@ -1777,12 +1781,9 @@ static bool all_equipment_connected()
 {
     Scope *auxMount = pFrame->pGearDialog ? pFrame->pGearDialog->AuxScope() : nullptr;
     StepGuider *ao = TheAO();
-    return pCamera && pCamera->Connected &&
-        (!pMount || pMount->IsConnected()) &&
-        (!pSecondaryMount || pSecondaryMount->IsConnected()) &&
-        (!auxMount || auxMount->IsConnected()) &&
-        (!ao || ao->IsConnected()) &&
-        (!pRotator || pRotator->IsConnected());
+    return pCamera && pCamera->Connected && (!pMount || pMount->IsConnected()) &&
+        (!pSecondaryMount || pSecondaryMount->IsConnected()) && (!auxMount || auxMount->IsConnected()) &&
+        (!ao || ao->IsConnected()) && (!pRotator || pRotator->IsConnected());
 }
 
 static void set_profile(JObj& response, const json_value *params)
