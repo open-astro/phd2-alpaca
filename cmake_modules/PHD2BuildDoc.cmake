@@ -42,27 +42,24 @@ set(_default_locale "en_EN")
 #.rst:
 # .. command:: get_phd_version
 #
-#    Extract the current version from the phd.h and populates the variables
-#    `VERSION_MAJOR`, `VERSION_MINOR` and `VERSION_PATCH`.
-#    Raises an error if the version cannot be extracted
+#    Extract the current version from version.md and populates the variables
+#    `VERSION_MAJOR`, `VERSION_MINOR`, `VERSION_PATCH`, and `VERSION_SUFFIX`.
+#    Raises an error if the version cannot be extracted.
 function(get_phd_version)
-  set(filename_to_extract_from ${PHD_PROJECT_ROOT_DIR}/src/phd.h)
-  file(STRINGS ${filename_to_extract_from} file_content
-       #REGEX "PHDVERSION[ _T\\(]+\"(.*)\""
-  )
+  set(filename_to_extract_from ${PHD_PROJECT_ROOT_DIR}/version.md)
+  file(STRINGS ${filename_to_extract_from} file_content)
 
   foreach(SRC_LINE ${file_content})
-    if("${SRC_LINE}" MATCHES "PHDVERSION[ _T\\(]+\"(([0-9]+)\\.([0-9]+).([0-9]+))\"")
-        # message("Extracted/discovered version '${CMAKE_MATCH_1}'")
-        set(VERSION_MAJOR ${CMAKE_MATCH_2} PARENT_SCOPE)
-        set(VERSION_MINOR ${CMAKE_MATCH_3} PARENT_SCOPE)
-        set(VERSION_PATCH ${CMAKE_MATCH_4} PARENT_SCOPE)
-        return()
+    if("${SRC_LINE}" MATCHES "^[ \t]*([0-9]+)\\.([0-9]+)\\.([0-9]+)([A-Za-z0-9._-]*)[ \t]*$")
+      set(VERSION_MAJOR ${CMAKE_MATCH_1} PARENT_SCOPE)
+      set(VERSION_MINOR ${CMAKE_MATCH_2} PARENT_SCOPE)
+      set(VERSION_PATCH ${CMAKE_MATCH_3} PARENT_SCOPE)
+      set(VERSION_SUFFIX ${CMAKE_MATCH_4} PARENT_SCOPE)
+      return()
     endif()
   endforeach()
 
-  message(FATAL_ERROR "Cannot extract version from file '${filename_to_extract_from}'")
-
+  message(FATAL_ERROR "Cannot extract version from file '${filename_to_extract_from}'. Expected a line like '1.2.3' or '1.2.3rc1'")
 endfunction()
 
 

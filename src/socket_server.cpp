@@ -76,6 +76,32 @@ void MyFrame::OnServerMenu(wxCommandEvent& evt)
     StartServer(GetServerMode());
 }
 
+void MyFrame::OnOpenWebPortal(wxCommandEvent& evt)
+{
+    POSSIBLY_UNUSED(evt);
+
+    if (!GetServerMode() || !EvtServer.IsHttpServerRunning())
+    {
+        StatusMsg(_("Web portal is unavailable. Enable Server first."));
+        return;
+    }
+
+    wxString url = EvtServer.GetHttpBaseUrl();
+    if (url.IsEmpty())
+    {
+        StatusMsg(_("Web portal is unavailable."));
+        return;
+    }
+
+    if (!wxLaunchDefaultBrowser(url))
+    {
+        Alert(_("Unable to open the web portal in your browser."));
+        return;
+    }
+
+    StatusMsg(wxString::Format(_("Opened web portal: %s"), url));
+}
+
 bool MyFrame::StartServer(bool state)
 {
     if (state)

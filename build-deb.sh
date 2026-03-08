@@ -27,23 +27,81 @@ warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 err()   { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 step()  { echo -e "${CYAN}[STEP]${NC} $*"; }
 
+sync_debian_changelog() {
+    local debian_changelog="${ROOT_DIR}/debian/changelog"
+    local root_changelog="${ROOT_DIR}/CHANGELOG.md"
+    step "Syncing debian/changelog from version.md + CHANGELOG.md..."
+    if [[ ! -f "$root_changelog" ]]; then
+        err "Cannot sync debian/changelog: missing $root_changelog"
+    fi
+
+    local version_regex="${FULL_VERSION//./\\.}"
+    local release_date
+    release_date=$(grep -E "^## \\[${version_regex}\\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" "$root_changelog" | head -1 | sed -E 's/^## \\[[^]]+\\] - ([0-9]{4}-[0-9]{2}-[0-9]{2})$/\1/')
+    local rfc2822_date
+    if [[ -n "$release_date" ]]; then
+        rfc2822_date=$(date -R -d "${release_date} 12:00:00" 2>/dev/null || date -R)
+    else
+        rfc2822_date=$(date -R)
+    fi
+
+    local maint_name maint_email
+    maint_name=$(git config --get user.name || true)
+    maint_email=$(git config --get user.email || true)
+    [[ -n "$maint_name" ]] || maint_name="OpenAstro PHD2 Team"
+    [[ -n "$maint_email" ]] || maint_email="maintainers@openastro.org"
+
+    mkdir -p "${ROOT_DIR}/debian"
+    local tmp_new tmp_old
+    tmp_new="$(mktemp)"
+    tmp_old="$(mktemp)"
+    if [[ -f "$debian_changelog" ]]; then
+        cp "$debian_changelog" "$tmp_old"
+    else
+        : > "$tmp_old"
+    fi
+
+    cat > "$tmp_new" <<EOF
+phd2 (${FULL_VERSION}) stable; urgency=low
+
+  * Sync package changelog from root CHANGELOG.md for release ${FULL_VERSION}.
+  * See CHANGELOG.md for detailed release notes.
+
+ -- ${maint_name} <${maint_email}>  ${rfc2822_date}
+EOF
+
+    # Preserve older entries, removing existing top stanza if it already matches FULL_VERSION.
+    awk -v ver="$FULL_VERSION" '
+      NR == 1 && $0 ~ "^phd2 \\(" ver "\\) " { skip = 1; next }
+      skip && /^ -- / { skip = 0; next }
+      skip { next }
+      { print }
+    ' "$tmp_old" >> "$tmp_new"
+
+    mv "$tmp_new" "$debian_changelog"
+    rm -f "$tmp_old"
+    info "Synced debian/changelog for version ${FULL_VERSION}"
+}
+
 # Project root (directory containing this script)
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 cd "$ROOT_DIR"
 
 # ---------------------------------------------------------------------------
-# Extract version from src/phd.h (for display; package version is in debian/changelog)
+# Extract version from version.md (single source of truth)
 # ---------------------------------------------------------------------------
-step "Extracting version from src/phd.h..."
-PHD_H="${ROOT_DIR}/src/phd.h"
-if [[ ! -f "$PHD_H" ]]; then
-    err "Cannot find src/phd.h at: $PHD_H"
+step "Extracting version from version.md..."
+VERSION_MD="${ROOT_DIR}/version.md"
+if [[ ! -f "$VERSION_MD" ]]; then
+    err "Cannot find version.md at: $VERSION_MD"
 fi
 
-PHDVERSION=$(grep -E '^\s*#define\s+PHDVERSION\s+_T\("([^"]*)"\)' "$PHD_H" | sed -E 's/.*_T\("([^"]*)"\).*/\1/')
-PHDSUBVER=$(grep -E '^\s*#define\s+PHDSUBVER\s+_T\("([^"]*)"\)' "$PHD_H" | sed -E 's/.*_T\("([^"]*)"\).*/\1/')
-FULL_VERSION="${PHDVERSION}${PHDSUBVER}"
+FULL_VERSION=$(grep -E '^[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+([A-Za-z0-9._-]*)[[:space:]]*$' "$VERSION_MD" | head -1 | sed -E 's/^[[:space:]]*//; s/[[:space:]]*$//')
+if [[ -z "$FULL_VERSION" ]]; then
+    err "Could not extract version from version.md (expected line like 1.2.3 or 1.2.3rc1)"
+fi
 info "Detected version: ${FULL_VERSION}"
+sync_debian_changelog
 
 # ---------------------------------------------------------------------------
 # Build dependencies (from debian/control and PHD2 Linux wiki)

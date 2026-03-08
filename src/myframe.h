@@ -322,6 +322,7 @@ public:
     void OnSockServerClientEvent(wxSocketEvent& evt);
     void HandleSockServerInput(wxSocketBase *sock);
     void OnServerMenu(wxCommandEvent& evt);
+    void OnOpenWebPortal(wxCommandEvent& evt);
     void OnCharHook(wxKeyEvent& evt);
     void OnTextControlSetFocus(wxFocusEvent& evt);
     void OnTextControlKillFocus(wxFocusEvent& evt);
@@ -632,6 +633,7 @@ enum
     MENU_SLIT_OVERLAY_COORDS,
     MENU_TAKEDARKS,
     MENU_SERVER,
+    MENU_OPEN_WEB_PORTAL,
     MENU_TOOLBAR,
     MENU_GRAPH,
     MENU_STATS,
@@ -711,6 +713,8 @@ enum
     SOCK_SERVER_CLIENT_ID,
     EVENT_SERVER_ID,
     EVENT_SERVER_CLIENT_ID,
+    HTTP_SERVER_ID,
+    HTTP_SERVER_CLIENT_ID,
 };
 
 wxDECLARE_EVENT(APPSTATE_NOTIFY_EVENT, wxCommandEvent);

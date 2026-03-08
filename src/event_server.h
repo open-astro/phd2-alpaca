@@ -45,8 +45,12 @@ public:
 
 private:
     wxSocketServer *m_serverSocket;
+    wxSocketServer *m_httpServerSocket;
     CliSockSet m_eventServerClients;
+    CliSockSet m_httpServerClients;
     wxTimer *m_configEventDebouncer;
+    wxString m_httpWebRoot;
+    unsigned int m_httpPort;
 
 public:
     EventServer();
@@ -54,6 +58,10 @@ public:
 
     bool EventServerStart(unsigned int instanceId);
     void EventServerStop();
+    bool IsHttpServerRunning() const { return m_httpServerSocket != nullptr; }
+    unsigned int GetHttpPort() const { return m_httpPort; }
+    wxString GetHttpBaseUrl() const;
+    const wxString& GetHttpWebRoot() const { return m_httpWebRoot; }
 
     void NotifyStartCalibration(const Mount *mount);
     void NotifyCalibrationStep(const CalibrationStepInfo& info);
@@ -88,6 +96,8 @@ public:
 private:
     void OnEventServerEvent(wxSocketEvent& evt);
     void OnEventServerClientEvent(wxSocketEvent& evt);
+    void OnHttpServerEvent(wxSocketEvent& evt);
+    void OnHttpServerClientEvent(wxSocketEvent& evt);
 
     wxDECLARE_EVENT_TABLE();
 };

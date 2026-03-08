@@ -34,8 +34,14 @@
 
 #include "phd.h"
 
+#include <wx/dir.h>
+#include <wx/file.h>
+#include <wx/filename.h>
+#include <wx/stdpaths.h>
 #include <wx/sstream.h>
 #include <wx/sckstrm.h>
+#include <ctype.h>
+#include <stdio.h>
 #include <sstream>
 #include <string.h>
 
@@ -50,6 +56,8 @@ EventServer EvtServer;
 wxBEGIN_EVENT_TABLE(EventServer, wxEvtHandler)
     EVT_SOCKET(EVENT_SERVER_ID, EventServer::OnEventServerEvent)
     EVT_SOCKET(EVENT_SERVER_CLIENT_ID, EventServer::OnEventServerClientEvent)
+    EVT_SOCKET(HTTP_SERVER_ID, EventServer::OnHttpServerEvent)
+    EVT_SOCKET(HTTP_SERVER_CLIENT_ID, EventServer::OnHttpServerClientEvent)
 wxEND_EVENT_TABLE();
 // clang-format on
 
@@ -952,6 +960,97 @@ static bool json_to_long(const json_value *val, long *out)
     return false;
 }
 
+// raw JSON name-value pair, value is inserted as-is (not quoted/escaped)
+struct NVRaw
+{
+    wxString n;
+    wxString v;
+    NVRaw(const wxString& n_, const wxString& v_) : n(n_), v(v_) { }
+};
+
+struct HttpClientData
+{
+    wxSocketClient *cli;
+    int refcnt;
+    wxMutex wrlock;
+    std::string recvbuf;
+
+    HttpClientData(wxSocketClient *cli_) : cli(cli_), refcnt(1) { }
+    void AddRef() { ++refcnt; }
+    void RemoveRef()
+    {
+        if (--refcnt == 0)
+        {
+            cli->Destroy();
+            delete this;
+        }
+    }
+};
+
+struct HttpClientDataGuard
+{
+    HttpClientData *cd;
+    HttpClientDataGuard(wxSocketClient *cli) : cd((HttpClientData *) cli->GetClientData()) { cd->AddRef(); }
+    ~HttpClientDataGuard() { cd->RemoveRef(); }
+    HttpClientData *operator->() const { return cd; }
+};
+
+inline static wxMutex *http_client_wrlock(wxSocketClient *cli)
+{
+    return &((HttpClientData *) cli->GetClientData())->wrlock;
+}
+
+static void send_buf_http(wxSocketClient *client, const std::string& buf)
+{
+    wxMutexLocker lock(*http_client_wrlock(client));
+    client->Write(buf.data(), buf.length());
+    if (client->LastWriteCount() != buf.length())
+    {
+        Debug.Write(wxString::Format("httpsrv: cli %p short write %u/%u %s\n", client, client->LastWriteCount(),
+                                     (unsigned int) buf.length(),
+                                     SockErrStr(client->Error() ? client->LastError() : wxSOCKET_NOERROR)));
+    }
+}
+
+static JObj& operator<<(JObj& j, const NVRaw& nv)
+{
+    if (j.m_first)
+        j.m_first = false;
+    else
+        j.m_s << ',';
+    j.m_s << '"' << nv.n << "\":" << nv.v;
+    return j;
+}
+
+static bool json_to_double(const json_value *val, double *out)
+{
+    if (!val)
+        return false;
+    if (val->type == JSON_INT)
+    {
+        *out = static_cast<double>(val->int_value);
+        return true;
+    }
+    if (val->type == JSON_FLOAT)
+    {
+        *out = static_cast<double>(val->float_value);
+        return true;
+    }
+    return false;
+}
+
+static bool json_to_bool(const json_value *val, bool *out)
+{
+    if (!val)
+        return false;
+    if (val->type == JSON_BOOL || val->type == JSON_INT)
+    {
+        *out = val->int_value != 0;
+        return true;
+    }
+    return false;
+}
+
 static bool parse_device_number_from_display(const wxString& display, long *deviceNumber)
 {
     // Expected format: "Device <n>: <name>"
@@ -1811,6 +1910,641 @@ static void set_profile(JObj& response, const json_value *params)
     }
 }
 
+static void get_alpaca_camera_pixelsize(JObj& response, const json_value *params)
+{
+#if defined(ALPACA_CAMERA) || defined(GUIDE_ALPACA) || defined(ROTATOR_ALPACA)
+    Params p("host", "port", "device_number", "device", params);
+    const json_value *hostv = p.param("host");
+    const json_value *portv = p.param("port");
+    const json_value *devv = p.param("device_number");
+    if (!devv)
+        devv = p.param("device");
+
+    wxString host = pConfig->Profile.GetString("/alpaca/host", _("localhost"));
+    long port = pConfig->Profile.GetLong("/alpaca/port", 6800);
+    long deviceNum = pConfig->Profile.GetLong("/alpaca/camera_device", 0);
+
+    if (hostv)
+    {
+        if (hostv->type != JSON_STRING || wxString(hostv->string_value).IsEmpty())
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected non-empty host string");
+            return;
+        }
+        host = hostv->string_value;
+    }
+    if (portv)
+    {
+        if (!json_to_long(portv, &port) || port < 1 || port > 65535)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected port in range 1..65535");
+            return;
+        }
+    }
+    if (devv)
+    {
+        if (!json_to_long(devv, &deviceNum) || deviceNum < 0)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected device_number >= 0");
+            return;
+        }
+    }
+
+    AlpacaClient client(host, port, deviceNum);
+    long errorCode = 0;
+    double pixelSize = 0.0;
+    wxString endpointX = wxString::Format("camera/%ld/pixelsizex", deviceNum);
+    wxString endpointY = wxString::Format("camera/%ld/pixelsizey", deviceNum);
+    bool ok = client.GetDouble(endpointX, &pixelSize, &errorCode);
+    if (!ok || pixelSize <= 0.0)
+    {
+        ok = client.GetDouble(endpointY, &pixelSize, &errorCode);
+    }
+
+    if (!ok || pixelSize <= 0.0)
+    {
+        response << jrpc_error(1, wxString::Format("failed to query camera pixel size from %s:%ld/%ld (error %ld)", host, port,
+                                                   deviceNum, errorCode));
+        return;
+    }
+
+    JObj rslt;
+    rslt << NV("host", host) << NV("port", static_cast<int>(port)) << NV("device_number", static_cast<int>(deviceNum))
+         << NV("pixel_size", pixelSize);
+    response << jrpc_result(rslt);
+#else
+    response << jrpc_error(1, "Alpaca support is not enabled in this build");
+#endif
+}
+
+static void get_selected_camera_pixelsize(JObj& response, const json_value *params)
+{
+    VERIFY_GUIDER(response);
+
+    wxString camChoice = selected_camera_choice();
+    if (camChoice.IsEmpty() || camChoice == _("None"))
+    {
+        response << jrpc_error(1, "no camera is selected");
+        return;
+    }
+
+    double pixelSize = 0.0;
+    wxString source = "unknown";
+
+    if (pCamera && pCamera->Connected)
+    {
+        if (!pCamera->GetDevicePixelSize(&pixelSize) && pixelSize > 0.0)
+        {
+            pCamera->SetCameraPixelSize(pixelSize);
+            source = "connected_camera_device";
+        }
+        else
+        {
+            pixelSize = pCamera->GetCameraPixelSize();
+            if (pixelSize > 0.0)
+                source = "connected_camera_profile";
+        }
+    }
+
+    if (pixelSize <= 0.0)
+    {
+        wxString camId = pConfig->Profile.GetString(GearDialog::CameraSelectionKey(camChoice), GuideCamera::DEFAULT_CAMERA_ID);
+        GuideCamera *cam = GuideCamera::Factory(camChoice);
+        if (!cam)
+        {
+            response << jrpc_error(1, "failed to create selected camera");
+            return;
+        }
+
+        GuideCamera::ConnectCamera(cam, camId);
+        if (cam->Connected)
+        {
+            double devPixelSize = 0.0;
+            if (!cam->GetDevicePixelSize(&devPixelSize) && devPixelSize > 0.0)
+            {
+                pixelSize = devPixelSize;
+                cam->SetCameraPixelSize(pixelSize);
+                source = "driver";
+            }
+            else
+            {
+                pixelSize = cam->GetCameraPixelSize();
+                if (pixelSize > 0.0)
+                    source = "profile";
+            }
+            cam->Disconnect();
+        }
+        delete cam;
+    }
+
+    if (pixelSize <= 0.0)
+    {
+        pixelSize = pConfig->Profile.GetDouble("/camera/pixelsize", 0.0);
+        if (pixelSize > 0.0)
+            source = "profile";
+    }
+
+    if (pixelSize <= 0.0)
+    {
+        response << jrpc_error(1, "camera driver did not report pixel size");
+        return;
+    }
+
+    JObj rslt;
+    rslt << NV("camera", camChoice) << NV("pixel_size", pixelSize) << NV("source", source);
+    response << jrpc_result(rslt);
+}
+
+static bool find_profile_id(const json_value *jId, const json_value *jName, int *profileId, wxString *error)
+{
+    if (jId)
+    {
+        if (jId->type != JSON_INT || jId->int_value <= 0)
+        {
+            *error = "expected positive profile id";
+            return false;
+        }
+        if (!pConfig->ProfileExists(jId->int_value))
+        {
+            *error = "invalid profile id";
+            return false;
+        }
+        *profileId = jId->int_value;
+        return true;
+    }
+
+    if (jName)
+    {
+        if (jName->type != JSON_STRING || wxString(jName->string_value).IsEmpty())
+        {
+            *error = "expected non-empty profile name";
+            return false;
+        }
+        int id = pConfig->GetProfileId(jName->string_value);
+        if (id <= 0)
+        {
+            *error = "invalid profile name";
+            return false;
+        }
+        *profileId = id;
+        return true;
+    }
+
+    *error = "expected profile id or name";
+    return false;
+}
+
+static void set_profile_by_name(JObj& response, const json_value *params)
+{
+    Params p("name", params);
+    const json_value *name = p.param("name");
+    int profileId = 0;
+    wxString err;
+    if (!find_profile_id(nullptr, name, &profileId, &err))
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, err);
+        return;
+    }
+
+    VERIFY_GUIDER(response);
+
+    wxString errMsg;
+    bool error = pFrame->pGearDialog->SetProfile(profileId, &errMsg);
+    if (error)
+        response << jrpc_error(1, errMsg);
+    else
+        response << jrpc_result(0);
+}
+
+static void create_profile(JObj& response, const json_value *params)
+{
+    Params p("name", "copy_from", "copy_from_id", "select", params);
+    const json_value *name = p.param("name");
+    const json_value *copyFrom = p.param("copy_from");
+    const json_value *copyFromId = p.param("copy_from_id");
+    const json_value *select = p.param("select");
+
+    if (!name || name->type != JSON_STRING || wxString(name->string_value).IsEmpty())
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected non-empty name param");
+        return;
+    }
+
+    wxString newName(name->string_value);
+    if (pConfig->GetProfileId(newName) > 0)
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "profile name already exists");
+        return;
+    }
+
+    wxString sourceName;
+    if (copyFrom && copyFromId)
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "use copy_from or copy_from_id, not both");
+        return;
+    }
+    if (copyFrom)
+    {
+        if (copyFrom->type != JSON_STRING || wxString(copyFrom->string_value).IsEmpty())
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected non-empty copy_from profile name");
+            return;
+        }
+        if (pConfig->GetProfileId(copyFrom->string_value) <= 0)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "copy_from profile not found");
+            return;
+        }
+        sourceName = copyFrom->string_value;
+    }
+    if (copyFromId)
+    {
+        if (copyFromId->type != JSON_INT || copyFromId->int_value <= 0 || !pConfig->ProfileExists(copyFromId->int_value))
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected valid copy_from_id");
+            return;
+        }
+        sourceName = pConfig->GetProfileName(copyFromId->int_value);
+    }
+
+    bool error = !sourceName.IsEmpty() ? pConfig->CloneProfile(newName, sourceName) : pConfig->CreateProfile(newName);
+    if (error)
+    {
+        response << jrpc_error(1, "could not create profile");
+        return;
+    }
+
+    int newId = pConfig->GetProfileId(newName);
+    if (newId <= 0)
+    {
+        response << jrpc_error(1, "profile created but could not resolve id");
+        return;
+    }
+
+    bool selectCreated = true;
+    if (select && !json_to_bool(select, &selectCreated))
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected boolean select param");
+        return;
+    }
+
+    if (selectCreated)
+    {
+        VERIFY_GUIDER(response);
+        wxString errMsg;
+        if (pFrame->pGearDialog->SetProfile(newId, &errMsg))
+        {
+            response << jrpc_error(1, errMsg);
+            return;
+        }
+    }
+
+    JObj rslt;
+    rslt << NV("id", newId) << NV("name", newName) << NV("selected", pConfig->GetCurrentProfileId() == newId);
+    response << jrpc_result(rslt);
+}
+
+static void clone_profile(JObj& response, const json_value *params)
+{
+    Params p("source_id", "source_name", "dest_name", "select", params);
+    const json_value *sourceId = p.param("source_id");
+    const json_value *sourceName = p.param("source_name");
+    const json_value *destName = p.param("dest_name");
+    const json_value *select = p.param("select");
+
+    if (!destName || destName->type != JSON_STRING || wxString(destName->string_value).IsEmpty())
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected non-empty dest_name param");
+        return;
+    }
+
+    int srcId = 0;
+    wxString err;
+    if (!find_profile_id(sourceId, sourceName, &srcId, &err))
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, err);
+        return;
+    }
+
+    wxString dst(destName->string_value);
+    if (pConfig->GetProfileId(dst) > 0)
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "destination profile name already exists");
+        return;
+    }
+
+    if (pConfig->CloneProfile(dst, pConfig->GetProfileName(srcId)))
+    {
+        response << jrpc_error(1, "could not clone profile");
+        return;
+    }
+
+    int newId = pConfig->GetProfileId(dst);
+    if (newId <= 0)
+    {
+        response << jrpc_error(1, "profile cloned but could not resolve id");
+        return;
+    }
+
+    bool selectCloned = true;
+    if (select && !json_to_bool(select, &selectCloned))
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected boolean select param");
+        return;
+    }
+
+    if (selectCloned)
+    {
+        VERIFY_GUIDER(response);
+        wxString errMsg;
+        if (pFrame->pGearDialog->SetProfile(newId, &errMsg))
+        {
+            response << jrpc_error(1, errMsg);
+            return;
+        }
+    }
+
+    JObj rslt;
+    rslt << NV("id", newId) << NV("name", dst) << NV("selected", pConfig->GetCurrentProfileId() == newId);
+    response << jrpc_result(rslt);
+}
+
+static void rename_profile(JObj& response, const json_value *params)
+{
+    Params p("new_name", "id", "name", params);
+    const json_value *newName = p.param("new_name");
+    const json_value *id = p.param("id");
+    const json_value *name = p.param("name");
+
+    if (!newName || newName->type != JSON_STRING || wxString(newName->string_value).IsEmpty())
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected non-empty new_name param");
+        return;
+    }
+
+    if (any_equipment_connected())
+    {
+        response << jrpc_error(1, "cannot rename profile while equipment is connected");
+        return;
+    }
+
+    int profileId = 0;
+    wxString err;
+    if (!find_profile_id(id, name, &profileId, &err))
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, err);
+        return;
+    }
+
+    wxString oldName = pConfig->GetProfileName(profileId);
+    wxString newNameStr = newName->string_value;
+    if (oldName.CmpNoCase(newNameStr) == 0)
+    {
+        response << jrpc_result(0);
+        return;
+    }
+
+    if (pConfig->GetProfileId(newNameStr) > 0)
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "new profile name already exists");
+        return;
+    }
+
+    if (pConfig->RenameProfile(oldName, newNameStr))
+    {
+        response << jrpc_error(1, "could not rename profile");
+        return;
+    }
+
+    if (profileId == pConfig->GetCurrentProfileId())
+        pFrame->UpdateTitle();
+
+    JObj rslt;
+    rslt << NV("id", profileId) << NV("name", newNameStr) << NV("selected", profileId == pConfig->GetCurrentProfileId());
+    response << jrpc_result(rslt);
+}
+
+static void delete_profile(JObj& response, const json_value *params)
+{
+    Params p("id", "name", "delete_dark_files", params);
+    const json_value *id = p.param("id");
+    const json_value *name = p.param("name");
+    const json_value *deleteDarks = p.param("delete_dark_files");
+
+    if (any_equipment_connected())
+    {
+        response << jrpc_error(1, "cannot delete profile while equipment is connected");
+        return;
+    }
+
+    int profileId = 0;
+    wxString err;
+    if (!find_profile_id(id, name, &profileId, &err))
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, err);
+        return;
+    }
+
+    bool removeDarkFiles = true;
+    if (deleteDarks && !json_to_bool(deleteDarks, &removeDarkFiles))
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected boolean delete_dark_files param");
+        return;
+    }
+
+    bool deletedCurrent = profileId == pConfig->GetCurrentProfileId();
+    wxString profileName = pConfig->GetProfileName(profileId);
+    if (removeDarkFiles)
+        pFrame->DeleteDarkLibraryFiles(profileId);
+    pConfig->DeleteProfile(profileName);
+
+    if (deletedCurrent)
+    {
+        pFrame->LoadProfileSettings();
+        pFrame->pGuider->LoadProfileSettings();
+        pFrame->UpdateTitle();
+        pFrame->pGraphLog->ResetData();
+    }
+
+    JObj current;
+    current << NV("id", pConfig->GetCurrentProfileId()) << NV("name", pConfig->GetCurrentProfile());
+    JObj rslt;
+    rslt << NV("deleted_id", profileId) << NV("deleted_name", profileName) << NV("current_profile", current);
+    response << jrpc_result(rslt);
+}
+
+static void get_profile_setup(JObj& response, const json_value *params)
+{
+    static const int DEFAULT_CALIBRATION_DURATION = 750;
+    static const int DEFAULT_CALIBRATION_DISTANCE = 25;
+
+    JObj rslt;
+    rslt << NV("focal_length", pConfig->Profile.GetInt("/frame/focalLength", 0))
+         << NV("pixel_size", pConfig->Profile.GetDouble("/camera/pixelsize", 0.0))
+         << NV("camera_binning", pConfig->Profile.GetInt("/camera/binning", 1))
+         << NV("software_binning", pConfig->Profile.GetInt("/camera/SoftwareBinning", 1))
+         << NV("guide_speed", pConfig->Profile.GetDouble("/CalStepCalc/GuideSpeed", Scope::DEFAULT_MOUNT_GUIDE_SPEED))
+         << NV("calibration_duration", pConfig->Profile.GetInt("/scope/CalibrationDuration", DEFAULT_CALIBRATION_DURATION))
+         << NV("calibration_distance", pConfig->Profile.GetInt("/scope/CalibrationDistance", DEFAULT_CALIBRATION_DISTANCE))
+         << NV("high_res_encoders", pConfig->Profile.GetBoolean("/scope/HiResEncoders", false))
+         << NV("auto_restore_calibration", pConfig->Profile.GetBoolean("/AutoLoadCalibration", false))
+         << NV("multistar_enabled", pConfig->Profile.GetBoolean("/guider/multistar/enabled", true))
+         << NV("mass_change_threshold_enabled",
+               pConfig->Profile.GetBoolean("/guider/onestar/MassChangeThresholdEnabled", true));
+
+    response << jrpc_result(rslt);
+}
+
+static void set_profile_setup(JObj& response, const json_value *params)
+{
+    if (any_equipment_connected())
+    {
+        response << jrpc_error(1, "cannot change setup profile settings while equipment is connected");
+        return;
+    }
+
+    if (params && params->type != JSON_OBJECT)
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected params object");
+        return;
+    }
+
+    auto get_param = [&](const char *key) -> const json_value *
+    {
+        if (!params)
+            return nullptr;
+        json_for_each(jv, params)
+        {
+            if (strcmp(jv->name, key) == 0)
+                return jv;
+        }
+        return nullptr;
+    };
+
+    const json_value *jv = nullptr;
+    long lval = 0;
+    double dval = 0.0;
+    bool bval = false;
+
+    if ((jv = get_param("focal_length")) != nullptr)
+    {
+        if (!json_to_long(jv, &lval) || lval < 0 || lval > 50000)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "focal_length must be in range 0..50000");
+            return;
+        }
+        pConfig->Profile.SetInt("/frame/focalLength", (int) lval);
+    }
+
+    if ((jv = get_param("pixel_size")) != nullptr)
+    {
+        if (!json_to_double(jv, &dval) || dval <= 0.0 || dval > 100.0)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "pixel_size must be in range (0,100]");
+            return;
+        }
+        pConfig->Profile.SetDouble("/camera/pixelsize", dval);
+    }
+
+    if ((jv = get_param("camera_binning")) != nullptr)
+    {
+        if (!json_to_long(jv, &lval) || lval < 1 || lval > 64)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "camera_binning must be in range 1..64");
+            return;
+        }
+        pConfig->Profile.SetInt("/camera/binning", (int) lval);
+    }
+
+    if ((jv = get_param("software_binning")) != nullptr)
+    {
+        if (!json_to_long(jv, &lval) || lval < 1 || lval > (long) GuideCamera::MAX_SOFTWARE_BINNING)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "software_binning value out of range");
+            return;
+        }
+        pConfig->Profile.SetInt("/camera/SoftwareBinning", (int) lval);
+    }
+
+    if ((jv = get_param("guide_speed")) != nullptr)
+    {
+        if (!json_to_double(jv, &dval) || dval <= 0.0 || dval > 10.0)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "guide_speed must be in range (0,10]");
+            return;
+        }
+        pConfig->Profile.SetDouble("/CalStepCalc/GuideSpeed", dval);
+    }
+
+    if ((jv = get_param("calibration_duration")) != nullptr)
+    {
+        if (!json_to_long(jv, &lval) || lval < 50 || lval > 60000)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "calibration_duration must be in range 50..60000");
+            return;
+        }
+        pConfig->Profile.SetInt("/scope/CalibrationDuration", (int) lval);
+    }
+
+    if ((jv = get_param("calibration_distance")) != nullptr)
+    {
+        if (!json_to_long(jv, &lval) || lval < 5 || lval > 200)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "calibration_distance must be in range 5..200");
+            return;
+        }
+        pConfig->Profile.SetInt("/scope/CalibrationDistance", (int) lval);
+    }
+
+    if ((jv = get_param("high_res_encoders")) != nullptr)
+    {
+        if (!json_to_bool(jv, &bval))
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected high_res_encoders boolean");
+            return;
+        }
+        pConfig->Profile.SetBoolean("/scope/HiResEncoders", bval);
+    }
+
+    if ((jv = get_param("auto_restore_calibration")) != nullptr)
+    {
+        if (!json_to_bool(jv, &bval))
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected auto_restore_calibration boolean");
+            return;
+        }
+        pConfig->Profile.SetBoolean("/AutoLoadCalibration", bval);
+    }
+
+    if ((jv = get_param("multistar_enabled")) != nullptr)
+    {
+        if (!json_to_bool(jv, &bval))
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected multistar_enabled boolean");
+            return;
+        }
+        pConfig->Profile.SetBoolean("/guider/multistar/enabled", bval);
+    }
+
+    if ((jv = get_param("mass_change_threshold_enabled")) != nullptr)
+    {
+        if (!json_to_bool(jv, &bval))
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected mass_change_threshold_enabled boolean");
+            return;
+        }
+        pConfig->Profile.SetBoolean("/guider/onestar/MassChangeThresholdEnabled", bval);
+    }
+
+    pConfig->Flush();
+
+    // keep runtime objects synchronized with updated profile settings
+    pFrame->LoadProfileSettings();
+    pFrame->pGuider->LoadProfileSettings();
+
+    get_profile_setup(response, nullptr);
+}
+
 static void get_connected(JObj& response, const json_value *params)
 {
     response << jrpc_result(all_equipment_connected());
@@ -2379,6 +3113,407 @@ static bool IsValidBinning(GuideCamera *camera, int binning, wxString *message)
     }
     *message = buf;
     return false;
+}
+
+static bool capture_master_dark_frame(usImage& darkFrame, int expTimeMs, int frameCount, wxString *error)
+{
+    if (!pCamera || !pCamera->Connected)
+    {
+        *error = "camera is not connected";
+        return true;
+    }
+    if (pFrame->CaptureActive)
+    {
+        *error = "cannot build darks while capture is active";
+        return true;
+    }
+    if (frameCount < 1)
+    {
+        *error = "frameCount must be >= 1";
+        return true;
+    }
+
+    pCamera->InitCapture();
+    darkFrame.ImgExpDur = expTimeMs;
+    darkFrame.ImgStackCnt = frameCount;
+
+    std::vector<unsigned int> avgimg;
+
+    for (int j = 1; j <= frameCount; j++)
+    {
+        CaptureParams captureParams;
+        captureParams.duration = expTimeMs;
+        captureParams.hwBinning = pCamera->HwBinning;
+        // Keep dark files unbinned in software so they can be reused.
+        captureParams.swBinning = 1;
+        captureParams.bpp = pCamera->BitsPerPixel();
+        captureParams.gain = pCamera->GuideCameraGain;
+        captureParams.captureOptions = CAPTURE_DARK;
+
+        bool err = GuideCamera::Capture(pCamera, darkFrame, captureParams);
+        if (err)
+        {
+            pCamera->ShutterClosed = false;
+            *error = wxString::Format("failed to capture dark frame %d/%d", j, frameCount);
+            return true;
+        }
+
+        if (avgimg.empty())
+            avgimg.resize(darkFrame.NPixels, 0);
+        for (unsigned int i = 0; i < darkFrame.NPixels; i++)
+            avgimg[i] += darkFrame.ImageData[i];
+    }
+
+    for (unsigned int i = 0; i < darkFrame.NPixels; i++)
+        darkFrame.ImageData[i] = (unsigned short) (avgimg[i] / frameCount);
+
+    return false;
+}
+
+static void get_calibration_files_status(JObj& response, const json_value *params)
+{
+    int profileId = pConfig->GetCurrentProfileId();
+    wxString darkPath = MyFrame::DarkLibFileName(profileId);
+    wxString defectPath = DefectMap::DefectMapFileName(profileId);
+
+    bool darkFileExists = wxFileExists(darkPath);
+    bool defectFileExists = wxFileExists(defectPath);
+    bool darkGeomOk = darkFileExists;
+    bool defectGeomOk = defectFileExists;
+    if (pCamera)
+    {
+        darkGeomOk = pFrame->DarkLibExists(profileId, false);
+        defectGeomOk = DefectMap::DefectMapExists(profileId, false);
+    }
+
+    JObj rslt;
+    rslt << NV("profile_id", profileId) << NV("dark_library_path", darkPath) << NV("defect_map_path", defectPath)
+         << NV("dark_library_exists", darkFileExists) << NV("defect_map_exists", defectFileExists)
+         << NV("dark_library_compatible", darkGeomOk) << NV("defect_map_compatible", defectGeomOk)
+         << NV("dark_library_loaded", pCamera && pCamera->CurrentDarkFrame)
+         << NV("defect_map_loaded", pCamera && pCamera->CurrentDefectMap)
+         << NV("auto_load_darks", pConfig->Profile.GetBoolean("/camera/AutoLoadDarks", true))
+         << NV("auto_load_defect_map", pConfig->Profile.GetBoolean("/camera/AutoLoadDefectMap", true));
+
+    if (pCamera)
+    {
+        int num = 0;
+        double minExp = 0.0, maxExp = 0.0;
+        pCamera->GetDarkLibraryProperties(&num, &minExp, &maxExp);
+        rslt << NV("dark_count_loaded", num) << NV("dark_min_exposure_seconds_loaded", minExp)
+             << NV("dark_max_exposure_seconds_loaded", maxExp);
+    }
+
+    response << jrpc_result(rslt);
+}
+
+static void set_dark_library_enabled(JObj& response, const json_value *params)
+{
+    Params p("enabled", params);
+    const json_value *enabled = p.param("enabled");
+    bool val = false;
+    if (!enabled || !json_to_bool(enabled, &val))
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected enabled boolean param");
+        return;
+    }
+
+    if (val && (!pCamera || !pCamera->Connected))
+    {
+        response << jrpc_error(1, "camera must be connected to enable dark library");
+        return;
+    }
+
+    bool ok = pFrame->LoadDarkHandler(val);
+    if (!ok)
+    {
+        response << jrpc_error(1, val ? "failed to load dark library" : "failed to unload dark library");
+        return;
+    }
+
+    get_calibration_files_status(response, nullptr);
+}
+
+static void set_defect_map_enabled(JObj& response, const json_value *params)
+{
+    Params p("enabled", params);
+    const json_value *enabled = p.param("enabled");
+    bool val = false;
+    if (!enabled || !json_to_bool(enabled, &val))
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected enabled boolean param");
+        return;
+    }
+
+    if (val && (!pCamera || !pCamera->Connected))
+    {
+        response << jrpc_error(1, "camera must be connected to enable defect map");
+        return;
+    }
+
+    pFrame->LoadDefectMapHandler(val);
+    if (val && (!pCamera || !pCamera->CurrentDefectMap))
+    {
+        response << jrpc_error(1, "failed to load defect map");
+        return;
+    }
+    if (!val && pCamera && pCamera->CurrentDefectMap)
+    {
+        response << jrpc_error(1, "failed to unload defect map");
+        return;
+    }
+
+    get_calibration_files_status(response, nullptr);
+}
+
+static void build_dark_library(JObj& response, const json_value *params)
+{
+    Params p("frame_count", "min_exposure_ms", "max_exposure_ms", "clear_existing", "notes", "load_after", params);
+    long frameCount = 5;
+    long minExposure = 0;
+    long maxExposure = 0;
+    bool clearExisting = false;
+    bool loadAfter = true;
+    wxString notes;
+
+    const json_value *jv = nullptr;
+    if ((jv = p.param("frame_count")) != nullptr)
+    {
+        if (!json_to_long(jv, &frameCount) || frameCount < 1 || frameCount > 50)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "frame_count must be in range 1..50");
+            return;
+        }
+    }
+    if ((jv = p.param("min_exposure_ms")) != nullptr)
+    {
+        if (!json_to_long(jv, &minExposure) || minExposure < 1 || minExposure > 600000)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "min_exposure_ms must be in range 1..600000");
+            return;
+        }
+    }
+    if ((jv = p.param("max_exposure_ms")) != nullptr)
+    {
+        if (!json_to_long(jv, &maxExposure) || maxExposure < 1 || maxExposure > 600000)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "max_exposure_ms must be in range 1..600000");
+            return;
+        }
+    }
+    if ((jv = p.param("clear_existing")) != nullptr)
+    {
+        if (!json_to_bool(jv, &clearExisting))
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected clear_existing boolean");
+            return;
+        }
+    }
+    if ((jv = p.param("load_after")) != nullptr)
+    {
+        if (!json_to_bool(jv, &loadAfter))
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected load_after boolean");
+            return;
+        }
+    }
+    if ((jv = p.param("notes")) != nullptr)
+    {
+        if (jv->type != JSON_STRING)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected notes string");
+            return;
+        }
+        notes = jv->string_value;
+    }
+
+    if (!pCamera || !pCamera->Connected)
+    {
+        response << jrpc_error(1, "camera is not connected");
+        return;
+    }
+    if (pFrame->CaptureActive)
+    {
+        response << jrpc_error(1, "cannot build dark library while capture is active");
+        return;
+    }
+
+    std::vector<int> exposureDurations(pFrame->GetExposureDurations());
+    std::sort(exposureDurations.begin(), exposureDurations.end());
+    std::vector<int> selected;
+    for (int dur : exposureDurations)
+    {
+        if (minExposure > 0 && dur < minExposure)
+            continue;
+        if (maxExposure > 0 && dur > maxExposure)
+            continue;
+        selected.push_back(dur);
+    }
+    if (selected.empty())
+    {
+        response << jrpc_error(1, "no exposure durations matched requested range");
+        return;
+    }
+
+    bool hadShutterClosed = pCamera->ShutterClosed;
+    pCamera->ShutterClosed = true;
+    if (clearExisting)
+        pCamera->ClearDarks();
+
+    wxString errorMsg;
+    int builtCount = 0;
+    for (int exp : selected)
+    {
+        usImage *newDark = new usImage();
+        if (capture_master_dark_frame(*newDark, exp, (int) frameCount, &errorMsg))
+        {
+            delete newDark;
+            pCamera->ShutterClosed = hadShutterClosed;
+            response << jrpc_error(1, errorMsg);
+            return;
+        }
+        pCamera->AddDark(newDark);
+        builtCount++;
+    }
+    pCamera->ShutterClosed = hadShutterClosed;
+
+    pFrame->SaveDarkLibrary(notes);
+    if (loadAfter)
+        pFrame->LoadDarkHandler(true);
+    pFrame->SetDarkMenuState();
+
+    JAry exps;
+    for (int exp : selected)
+        exps << exp;
+    JObj rslt;
+    rslt << NV("profile_id", pConfig->GetCurrentProfileId()) << NV("dark_library_path", MyFrame::DarkLibFileName(pConfig->GetCurrentProfileId()))
+         << NV("frame_count", (int) frameCount) << NV("exposure_count", builtCount) << NV("exposures_ms", exps);
+    response << jrpc_result(rslt);
+}
+
+static void build_defect_map_darks(JObj& response, const json_value *params)
+{
+    Params p("exposure_ms", "frame_count", "notes", "load_after", params);
+    long exposureMs = 3000;
+    long frameCount = 10;
+    bool loadAfter = true;
+    wxString notes;
+
+    const json_value *jv = nullptr;
+    if ((jv = p.param("exposure_ms")) != nullptr)
+    {
+        if (!json_to_long(jv, &exposureMs) || exposureMs < 1 || exposureMs > 600000)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "exposure_ms must be in range 1..600000");
+            return;
+        }
+    }
+    if ((jv = p.param("frame_count")) != nullptr)
+    {
+        if (!json_to_long(jv, &frameCount) || frameCount < 1 || frameCount > 50)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "frame_count must be in range 1..50");
+            return;
+        }
+    }
+    if ((jv = p.param("load_after")) != nullptr)
+    {
+        if (!json_to_bool(jv, &loadAfter))
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected load_after boolean");
+            return;
+        }
+    }
+    if ((jv = p.param("notes")) != nullptr)
+    {
+        if (jv->type != JSON_STRING)
+        {
+            response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected notes string");
+            return;
+        }
+        notes = jv->string_value;
+    }
+
+    if (!pCamera || !pCamera->Connected)
+    {
+        response << jrpc_error(1, "camera is not connected");
+        return;
+    }
+    if (pFrame->CaptureActive)
+    {
+        response << jrpc_error(1, "cannot build defect-map darks while capture is active");
+        return;
+    }
+
+    bool hadShutterClosed = pCamera->ShutterClosed;
+    pCamera->ShutterClosed = true;
+
+    DefectMapDarks darks;
+    wxString errorMsg;
+    if (capture_master_dark_frame(darks.masterDark, (int) exposureMs, (int) frameCount, &errorMsg))
+    {
+        pCamera->ShutterClosed = hadShutterClosed;
+        response << jrpc_error(1, errorMsg);
+        return;
+    }
+    darks.BuildFilteredDark();
+    darks.SaveDarks(notes);
+
+    DefectMapBuilder builder;
+    builder.Init(darks);
+    builder.SetAggressiveness(100, 100);
+    DefectMap defectMap;
+    builder.BuildDefectMap(defectMap, false);
+    defectMap.Save(builder.GetMapInfo());
+
+    if (loadAfter)
+        pFrame->LoadDefectMapHandler(true);
+    pFrame->SetDarkMenuState();
+
+    pCamera->ShutterClosed = hadShutterClosed;
+
+    JObj rslt;
+    rslt << NV("profile_id", pConfig->GetCurrentProfileId())
+         << NV("defect_map_path", DefectMap::DefectMapFileName(pConfig->GetCurrentProfileId()))
+         << NV("defect_count", (int) defectMap.size()) << NV("exposure_ms", (int) exposureMs)
+         << NV("frame_count", (int) frameCount);
+    response << jrpc_result(rslt);
+}
+
+static void delete_calibration_files(JObj& response, const json_value *params)
+{
+    Params p("delete_dark_library", "delete_defect_map", params);
+    bool deleteDark = true;
+    bool deleteDefect = true;
+    const json_value *jv = nullptr;
+
+    if ((jv = p.param("delete_dark_library")) != nullptr && !json_to_bool(jv, &deleteDark))
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected delete_dark_library boolean");
+        return;
+    }
+    if ((jv = p.param("delete_defect_map")) != nullptr && !json_to_bool(jv, &deleteDefect))
+    {
+        response << jrpc_error(JSONRPC_INVALID_PARAMS, "expected delete_defect_map boolean");
+        return;
+    }
+
+    int profileId = pConfig->GetCurrentProfileId();
+    if (deleteDark && wxFileExists(MyFrame::DarkLibFileName(profileId)))
+        wxRemoveFile(MyFrame::DarkLibFileName(profileId));
+    if (deleteDefect)
+        DefectMap::DeleteDefectMap(profileId);
+
+    if (pCamera)
+    {
+        if (deleteDark && pCamera->CurrentDarkFrame)
+            pCamera->ClearDarks();
+        if (deleteDefect && pCamera->CurrentDefectMap)
+            pCamera->ClearDefectMap();
+    }
+    pFrame->SetDarkMenuState();
+
+    get_calibration_files_status(response, nullptr);
 }
 
 static void capture_single_frame(JObj& response, const json_value *params)
@@ -3367,33 +4502,15 @@ static void dump_response(const JRpcCall& call)
     Debug.Write(wxString::Format("evsrv: cli %p response: %s\n", call.cli, s));
 }
 
-static bool handle_request(JRpcCall& call)
+struct RpcMethod
 {
-    const json_value *params;
-    const json_value *id;
+    const char *name;
+    void (*fn)(JObj& response, const json_value *params);
+};
 
-    dump_request(call);
-
-    parse_request(call.req, &call.method, &params, &id);
-
-    if (!call.method)
-    {
-        call.response << jrpc_error(JSONRPC_INVALID_REQUEST, "invalid request - missing method") << jrpc_id(0);
-        return true;
-    }
-
-    if (params && !(params->type == JSON_ARRAY || params->type == JSON_OBJECT))
-    {
-        call.response << jrpc_error(JSONRPC_INVALID_REQUEST, "invalid request - params must be an array or object")
-                      << jrpc_id(0);
-        return true;
-    }
-
-    static struct
-    {
-        const char *name;
-        void (*fn)(JObj& response, const json_value *params);
-    } methods[] = {
+static const RpcMethod *rpc_methods(size_t *count)
+{
+    static const RpcMethod methods[] = {
         { "clear_calibration", &clear_calibration },
         { "deselect_star", &deselect_star },
         { "get_exposure", &get_exposure },
@@ -3402,6 +4519,13 @@ static bool handle_request(JRpcCall& call)
         { "get_profiles", &get_profiles },
         { "get_profile", &get_profile },
         { "set_profile", &set_profile },
+        { "set_profile_by_name", &set_profile_by_name },
+        { "create_profile", &create_profile },
+        { "clone_profile", &clone_profile },
+        { "rename_profile", &rename_profile },
+        { "delete_profile", &delete_profile },
+        { "get_profile_setup", &get_profile_setup },
+        { "set_profile_setup", &set_profile_setup },
         { "get_connected", &get_connected },
         { "set_connected", &set_connected },
         { "get_calibrated", &get_calibrated },
@@ -3435,6 +4559,8 @@ static bool handle_request(JRpcCall& call)
         { "set_alpaca_server", &set_alpaca_server },
         { "discover_alpaca_servers", &discover_alpaca_servers },
         { "query_alpaca_devices", &query_alpaca_devices },
+        { "get_alpaca_camera_pixelsize", &get_alpaca_camera_pixelsize },
+        { "get_selected_camera_pixelsize", &get_selected_camera_pixelsize },
         { "set_selected_alpaca_device", &set_selected_alpaca_device },
         { "get_equipment_choices", &get_equipment_choices },
         { "get_selected_mount", &get_selected_mount },
@@ -3466,6 +4592,12 @@ static bool handle_request(JRpcCall& call)
         { "guide_pulse", &guide_pulse },
         { "get_calibration_data", &get_calibration_data },
         { "capture_single_frame", &capture_single_frame },
+        { "get_calibration_files_status", &get_calibration_files_status },
+        { "set_dark_library_enabled", &set_dark_library_enabled },
+        { "set_defect_map_enabled", &set_defect_map_enabled },
+        { "build_dark_library", &build_dark_library },
+        { "build_defect_map_darks", &build_defect_map_darks },
+        { "delete_calibration_files", &delete_calibration_files },
         { "get_cooler_status", &get_cooler_status },
         { "set_cooler_state", &set_cooler_state },
         { "get_ccd_temperature", &get_sensor_temperature },
@@ -3475,21 +4607,57 @@ static bool handle_request(JRpcCall& call)
         { "get_limit_frame", &get_limit_frame },
         { "set_limit_frame", &set_limit_frame },
     };
+    *count = WXSIZEOF(methods);
+    return methods;
+}
 
-    for (unsigned int i = 0; i < WXSIZEOF(methods); i++)
+static bool dispatch_rpc_method(const char *name, JObj& response, const json_value *params)
+{
+    size_t count = 0;
+    const RpcMethod *methods = rpc_methods(&count);
+    for (size_t i = 0; i < count; i++)
     {
-        if (strcmp(call.method->string_value, methods[i].name) == 0)
+        if (strcmp(name, methods[i].name) == 0)
         {
-            (*methods[i].fn)(call.response, params);
-            if (id)
-            {
-                call.response << jrpc_id(id);
-                return true;
-            }
-            else
-            {
-                return false;
-            }
+            (*methods[i].fn)(response, params);
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool handle_request(JRpcCall& call)
+{
+    const json_value *params;
+    const json_value *id;
+
+    dump_request(call);
+
+    parse_request(call.req, &call.method, &params, &id);
+
+    if (!call.method)
+    {
+        call.response << jrpc_error(JSONRPC_INVALID_REQUEST, "invalid request - missing method") << jrpc_id(0);
+        return true;
+    }
+
+    if (params && !(params->type == JSON_ARRAY || params->type == JSON_OBJECT))
+    {
+        call.response << jrpc_error(JSONRPC_INVALID_REQUEST, "invalid request - params must be an array or object")
+                      << jrpc_id(0);
+        return true;
+    }
+
+    if (dispatch_rpc_method(call.method->string_value, call.response, params))
+    {
+        if (id)
+        {
+            call.response << jrpc_id(id);
+            return true;
+        }
+        else
+        {
+            return false;
         }
     }
 
@@ -3612,7 +4780,524 @@ static void handle_cli_input(wxSocketClient *cli)
     }
 }
 
-EventServer::EventServer() : m_configEventDebouncer(nullptr) { }
+static const json_value *json_object_get(const json_value *obj, const char *name)
+{
+    if (!obj || obj->type != JSON_OBJECT)
+        return nullptr;
+    json_for_each(jv, obj)
+    {
+        if (jv->name && strcmp(jv->name, name) == 0)
+            return jv;
+    }
+    return nullptr;
+}
+
+static bool call_rpc_result_raw(const wxString& method, const json_value *params, wxString *resultRaw, wxString *errorMessage)
+{
+    JRpcResponse response;
+    if (!dispatch_rpc_method(method.ToUTF8().data(), response, params))
+    {
+        *errorMessage = wxString::Format("method not found: %s", method);
+        return false;
+    }
+
+    wxCharBuffer buf = response.str().ToUTF8();
+    JsonParser parser;
+    if (!parser.Parse(buf.data()))
+    {
+        *errorMessage = parser_error(parser);
+        return false;
+    }
+
+    const json_value *root = parser.Root();
+    const json_value *err = json_object_get(root, "error");
+    if (err)
+    {
+        const json_value *msg = json_object_get(err, "message");
+        if (msg && msg->type == JSON_STRING)
+            *errorMessage = msg->string_value;
+        else
+            *errorMessage = json_format(err);
+        return false;
+    }
+
+    const json_value *result = json_object_get(root, "result");
+    if (!result)
+    {
+        *errorMessage = "missing result";
+        return false;
+    }
+
+    *resultRaw = json_format(result);
+    return true;
+}
+
+static wxString http_status_text(int code)
+{
+    switch (code)
+    {
+    case 200:
+        return "OK";
+    case 400:
+        return "Bad Request";
+    case 404:
+        return "Not Found";
+    case 405:
+        return "Method Not Allowed";
+    case 500:
+        return "Internal Server Error";
+    default:
+        return "Error";
+    }
+}
+
+static std::string http_response(int code, const wxString& contentType, const wxString& body)
+{
+    wxCharBuffer bodyUtf8 = body.ToUTF8();
+    wxString hdr = wxString::Format("HTTP/1.1 %d %s\r\n", code, http_status_text(code));
+    hdr << "Connection: close\r\n";
+    hdr << "Cache-Control: no-store\r\n";
+    hdr << "Content-Type: " << contentType << "\r\n";
+    hdr << wxString::Format("Content-Length: %u\r\n\r\n", (unsigned int) bodyUtf8.length());
+    std::string resp(hdr.ToUTF8().data());
+    resp.append(bodyUtf8.data(), bodyUtf8.length());
+    return resp;
+}
+
+static std::string http_json_response(int code, const JObj& obj)
+{
+    return http_response(code, "application/json; charset=utf-8", JObj(obj).str());
+}
+
+static wxString mime_type_for_path(const wxString& path)
+{
+    wxFileName fn(path);
+    wxString ext = fn.GetExt().Lower();
+    if (ext == "html" || ext == "htm")
+        return "text/html; charset=utf-8";
+    if (ext == "css")
+        return "text/css; charset=utf-8";
+    if (ext == "js")
+        return "application/javascript; charset=utf-8";
+    if (ext == "json")
+        return "application/json; charset=utf-8";
+    if (ext == "png")
+        return "image/png";
+    if (ext == "jpg" || ext == "jpeg")
+        return "image/jpeg";
+    if (ext == "svg")
+        return "image/svg+xml";
+    if (ext == "ico")
+        return "image/x-icon";
+    return "application/octet-stream";
+}
+
+static bool read_file_utf8_or_binary(const wxString& path, std::string *data)
+{
+    wxFile f(path);
+    if (!f.IsOpened())
+        return false;
+    wxFileOffset len = f.Length();
+    if (len < 0)
+        return false;
+    data->resize((size_t) len);
+    if (len > 0 && f.Read(&(*data)[0], (size_t) len) != len)
+        return false;
+    return true;
+}
+
+static std::string lower_ascii(const std::string& s)
+{
+    std::string t(s);
+    for (size_t i = 0; i < t.size(); i++)
+        t[i] = (char) tolower((unsigned char) t[i]);
+    return t;
+}
+
+static wxString url_decode(const std::string& s)
+{
+    wxString out;
+    for (size_t i = 0; i < s.size(); i++)
+    {
+        char c = s[i];
+        if (c == '+')
+        {
+            out << ' ';
+        }
+        else if (c == '%' && i + 2 < s.size())
+        {
+            unsigned int v = 0;
+            if (sscanf(s.substr(i + 1, 2).c_str(), "%02x", &v) == 1)
+            {
+                out << (wxChar) v;
+                i += 2;
+            }
+            else
+            {
+                out << c;
+            }
+        }
+        else
+        {
+            out << c;
+        }
+    }
+    return out;
+}
+
+static std::map<std::string, wxString> parse_query(const std::string& qs)
+{
+    std::map<std::string, wxString> out;
+    size_t pos = 0;
+    while (pos < qs.size())
+    {
+        size_t amp = qs.find('&', pos);
+        if (amp == std::string::npos)
+            amp = qs.size();
+        std::string part = qs.substr(pos, amp - pos);
+        size_t eq = part.find('=');
+        std::string key = eq == std::string::npos ? part : part.substr(0, eq);
+        std::string val = eq == std::string::npos ? "" : part.substr(eq + 1);
+        if (!key.empty())
+            out[key] = url_decode(val);
+        pos = amp + 1;
+    }
+    return out;
+}
+
+struct HttpRequest
+{
+    std::string method;
+    std::string target;
+    std::string path;
+    std::string query;
+    std::map<std::string, std::string> headers;
+    std::string body;
+};
+
+static bool parse_http_request(const std::string& buf, HttpRequest *req, size_t *consumed, bool *needMore)
+{
+    *needMore = false;
+    *consumed = 0;
+    size_t hdrEnd = buf.find("\r\n\r\n");
+    size_t hdrLen = 4;
+    if (hdrEnd == std::string::npos)
+    {
+        hdrEnd = buf.find("\n\n");
+        hdrLen = 2;
+    }
+    if (hdrEnd == std::string::npos)
+    {
+        *needMore = true;
+        return true;
+    }
+
+    std::string head = buf.substr(0, hdrEnd);
+    std::istringstream is(head);
+    std::string line;
+    if (!std::getline(is, line))
+        return false;
+    if (!line.empty() && line.back() == '\r')
+        line.pop_back();
+    std::istringstream requestLine(line);
+    std::string version;
+    if (!(requestLine >> req->method >> req->target >> version))
+        return false;
+
+    while (std::getline(is, line))
+    {
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+        if (line.empty())
+            continue;
+        size_t colon = line.find(':');
+        if (colon == std::string::npos)
+            continue;
+        std::string k = lower_ascii(line.substr(0, colon));
+        std::string v = line.substr(colon + 1);
+        while (!v.empty() && (v.front() == ' ' || v.front() == '\t'))
+            v.erase(v.begin());
+        req->headers[k] = v;
+    }
+
+    size_t contentLen = 0;
+    auto it = req->headers.find("content-length");
+    if (it != req->headers.end())
+    {
+        long v = 0;
+        if (!wxString(it->second).ToLong(&v) || v < 0)
+            return false;
+        contentLen = (size_t) v;
+    }
+
+    size_t total = hdrEnd + hdrLen + contentLen;
+    if (buf.size() < total)
+    {
+        *needMore = true;
+        return true;
+    }
+
+    req->body = buf.substr(hdrEnd + hdrLen, contentLen);
+    *consumed = total;
+
+    size_t q = req->target.find('?');
+    if (q == std::string::npos)
+    {
+        req->path = req->target;
+    }
+    else
+    {
+        req->path = req->target.substr(0, q);
+        req->query = req->target.substr(q + 1);
+    }
+
+    return true;
+}
+
+static std::string json_error_response_body(const wxString& msg)
+{
+    JObj obj;
+    obj << NV("ok", false) << NV("error", msg);
+    return http_json_response(500, obj);
+}
+
+static wxString normalize_path(const wxString& p)
+{
+    wxFileName fn(p);
+    fn.Normalize(wxPATH_NORM_DOTS | wxPATH_NORM_ABSOLUTE);
+    return fn.GetFullPath();
+}
+
+static bool path_is_under(const wxString& child, const wxString& parent)
+{
+    wxString c = normalize_path(child);
+    wxString p = normalize_path(parent);
+#ifdef __WINDOWS__
+    c.MakeLower();
+    p.MakeLower();
+#endif
+    if (!p.EndsWith(wxFileName::GetPathSeparator()))
+        p << wxFileName::GetPathSeparator();
+    return c.StartsWith(p);
+}
+
+static bool call_rpc_result_raw_json(const wxString& method, const wxString& paramsJson, wxString *resultRaw, wxString *errorMessage)
+{
+    JsonParser parser;
+    wxCharBuffer cbuf = paramsJson.ToUTF8();
+    if (!parser.Parse(cbuf.data()))
+    {
+        *errorMessage = parser_error(parser);
+        return false;
+    }
+    return call_rpc_result_raw(method, parser.Root(), resultRaw, errorMessage);
+}
+
+static wxString event_server_web_root()
+{
+    wxString primary = wxGetApp().GetPHDResourcesDir() + PATHSEPSTR + "webui";
+    if (wxDirExists(primary) && wxFileExists(primary + PATHSEPSTR + "index.html"))
+        return primary;
+
+    wxString devRoot = wxGetCwd() + PATHSEPSTR + "scripts" + PATHSEPSTR + "webui";
+    if (wxDirExists(devRoot) && wxFileExists(devRoot + PATHSEPSTR + "index.html"))
+        return devRoot;
+
+    return primary;
+}
+
+static std::string http_not_found()
+{
+    return http_response(404, "text/plain; charset=utf-8", "Not found");
+}
+
+static std::string handle_http_request(EventServer *server, const HttpRequest& req)
+{
+    if (req.method != "GET" && req.method != "POST")
+        return http_response(405, "text/plain; charset=utf-8", "Method not allowed");
+
+    if (req.method == "GET" && (req.path == "/" || req.path == "/index.html"))
+    {
+        wxString path = server->GetHttpWebRoot() + PATHSEPSTR + "index.html";
+        std::string data;
+        if (!read_file_utf8_or_binary(path, &data))
+            return http_not_found();
+        wxString body = wxString::FromUTF8(data.data(), data.size());
+        return http_response(200, "text/html; charset=utf-8", body);
+    }
+
+    if (req.method == "GET" && req.path.find("/assets/") == 0)
+    {
+        wxString rel = url_decode(req.path.substr(strlen("/assets/")));
+        if (rel.Contains("..") || rel.StartsWith("/") || rel.StartsWith("\\"))
+            return http_not_found();
+
+        wxString assetsRoot = server->GetHttpWebRoot() + PATHSEPSTR + "assets";
+        wxString fullPath = assetsRoot + PATHSEPSTR + rel;
+        if (!path_is_under(fullPath, assetsRoot) || !wxFileExists(fullPath))
+            return http_not_found();
+
+        std::string data;
+        if (!read_file_utf8_or_binary(fullPath, &data))
+            return http_not_found();
+
+        wxString hdr = wxString::Format("HTTP/1.1 200 OK\r\nConnection: close\r\nCache-Control: no-store\r\nContent-Type: %s\r\n"
+                                        "Content-Length: %u\r\n\r\n",
+                                        mime_type_for_path(fullPath), (unsigned int) data.size());
+        std::string resp(hdr.ToUTF8().data());
+        resp.append(data);
+        return resp;
+    }
+
+    if (req.method == "GET" && req.path == "/api/setup")
+    {
+        static const char *methods[][2] = {
+            { "profiles", "get_profiles" },
+            { "profile", "get_profile" },
+            { "connected", "get_connected" },
+            { "current_equipment", "get_current_equipment" },
+            { "equipment_choices", "get_equipment_choices" },
+            { "selected_camera", "get_selected_camera" },
+            { "selected_mount", "get_selected_mount" },
+            { "selected_aux_mount", "get_selected_aux_mount" },
+            { "selected_ao", "get_selected_ao" },
+            { "selected_rotator", "get_selected_rotator" },
+            { "selected_camera_id", "get_selected_camera_id" },
+            { "alpaca_server", "get_alpaca_server" },
+            { "profile_setup", "get_profile_setup" },
+            { "dark_status", "get_calibration_files_status" },
+        };
+
+        JObj setup;
+        for (unsigned int i = 0; i < WXSIZEOF(methods); i++)
+        {
+            wxString resultRaw;
+            wxString err;
+            if (!call_rpc_result_raw(methods[i][1], nullptr, &resultRaw, &err))
+                return json_error_response_body(err);
+            setup << NVRaw(methods[i][0], resultRaw);
+        }
+
+        JObj out;
+        out << NV("ok", true) << NV("setup", setup);
+        return http_json_response(200, out);
+    }
+
+    if (req.method == "GET" && req.path == "/api/discover/alpaca")
+    {
+        auto qs = parse_query(req.query);
+        long numQueries = 2;
+        long timeoutSeconds = 2;
+        auto nq = qs.find("num_queries");
+        if (nq != qs.end())
+            nq->second.ToLong(&numQueries);
+        auto ts = qs.find("timeout_seconds");
+        if (ts != qs.end())
+            ts->second.ToLong(&timeoutSeconds);
+        if (numQueries < 1)
+            numQueries = 1;
+        if (timeoutSeconds < 1)
+            timeoutSeconds = 1;
+
+        wxString params = wxString::Format("{\"num_queries\":%ld,\"timeout_seconds\":%ld}", numQueries, timeoutSeconds);
+        wxString resultRaw;
+        wxString err;
+        if (!call_rpc_result_raw_json("discover_alpaca_servers", params, &resultRaw, &err))
+            return json_error_response_body(err);
+
+        JObj out;
+        out << NV("ok", true) << NVRaw("servers", resultRaw);
+        return http_json_response(200, out);
+    }
+
+    if (req.method == "POST" && req.path == "/api/rpc")
+    {
+        JsonParser parser;
+        if (!parser.Parse(req.body.c_str()))
+        {
+            JObj out;
+            out << NV("ok", false) << NV("error", parser_error(parser));
+            return http_json_response(400, out);
+        }
+
+        const json_value *root = parser.Root();
+        if (!root || root->type != JSON_OBJECT)
+        {
+            JObj out;
+            out << NV("ok", false) << NV("error", "request body must be an object");
+            return http_json_response(400, out);
+        }
+
+        const json_value *method = json_object_get(root, "method");
+        const json_value *params = json_object_get(root, "params");
+        if (!method || method->type != JSON_STRING || !method->string_value || !*method->string_value)
+        {
+            JObj out;
+            out << NV("ok", false) << NV("error", "method is required");
+            return http_json_response(400, out);
+        }
+
+        wxString resultRaw;
+        wxString err;
+        if (!call_rpc_result_raw(method->string_value, params, &resultRaw, &err))
+        {
+            JObj out;
+            out << NV("ok", false) << NV("error", err);
+            return http_json_response(500, out);
+        }
+
+        JObj out;
+        out << NV("ok", true) << NVRaw("result", resultRaw);
+        return http_json_response(200, out);
+    }
+
+    return http_not_found();
+}
+
+static void destroy_http_client(wxSocketClient *cli)
+{
+    HttpClientData *buf = (HttpClientData *) cli->GetClientData();
+    buf->RemoveRef();
+}
+
+static bool handle_http_cli_input(EventServer *server, wxSocketClient *cli)
+{
+    HttpClientDataGuard clidata(cli);
+    wxSocketInputStream sis(*cli);
+    while (sis.CanRead())
+    {
+        char tmp[2048];
+        size_t n = sis.Read(tmp, sizeof(tmp)).LastRead();
+        if (n == 0)
+            break;
+        clidata->recvbuf.append(tmp, n);
+        if (clidata->recvbuf.size() > 1024 * 1024)
+        {
+            send_buf_http(cli, http_response(400, "text/plain; charset=utf-8", "Request too large"));
+            return true;
+        }
+    }
+
+    HttpRequest req;
+    size_t consumed = 0;
+    bool needMore = false;
+    if (!parse_http_request(clidata->recvbuf, &req, &consumed, &needMore))
+    {
+        send_buf_http(cli, http_response(400, "text/plain; charset=utf-8", "Bad request"));
+        return true;
+    }
+    if (needMore)
+        return false;
+
+    std::string resp = handle_http_request(server, req);
+    send_buf_http(cli, resp);
+    return true;
+}
+
+EventServer::EventServer()
+    : m_serverSocket(nullptr), m_httpServerSocket(nullptr), m_configEventDebouncer(nullptr), m_httpPort(0)
+{
+}
 
 EventServer::~EventServer() { }
 
@@ -3645,13 +5330,46 @@ bool EventServer::EventServerStart(unsigned int instanceId)
 
     Debug.Write(wxString::Format("event server started, listening on port %u\n", port));
 
+    m_httpPort = 8080 + instanceId - 1;
+    wxIPV4address httpServerAddr;
+    httpServerAddr.Hostname("127.0.0.1");
+    httpServerAddr.Service(m_httpPort);
+    m_httpServerSocket = new wxSocketServer(httpServerAddr, wxSOCKET_REUSEADDR);
+    if (!m_httpServerSocket->Ok())
+    {
+        Debug.Write(wxString::Format("HTTP server failed to start - Could not listen at 127.0.0.1:%u\n", m_httpPort));
+        delete m_httpServerSocket;
+        m_httpServerSocket = nullptr;
+        EventServerStop();
+        return true;
+    }
+    m_httpServerSocket->SetEventHandler(*this, HTTP_SERVER_ID);
+    m_httpServerSocket->SetNotify(wxSOCKET_CONNECTION_FLAG);
+    m_httpServerSocket->Notify(true);
+    m_httpWebRoot = event_server_web_root();
+    Debug.Write(wxString::Format("HTTP server started, listening on 127.0.0.1:%u (web root: %s)\n", m_httpPort, m_httpWebRoot));
+
     return false;
 }
 
 void EventServer::EventServerStop()
 {
-    if (!m_serverSocket)
+    if (!m_serverSocket && !m_httpServerSocket)
         return;
+
+    for (CliSockSet::const_iterator it = m_httpServerClients.begin(); it != m_httpServerClients.end(); ++it)
+    {
+        destroy_http_client(*it);
+    }
+    m_httpServerClients.clear();
+
+    if (m_httpServerSocket)
+    {
+        delete m_httpServerSocket;
+        m_httpServerSocket = nullptr;
+    }
+    m_httpWebRoot.clear();
+    m_httpPort = 0;
 
     for (CliSockSet::const_iterator it = m_eventServerClients.begin(); it != m_eventServerClients.end(); ++it)
     {
@@ -3666,6 +5384,13 @@ void EventServer::EventServerStop()
     m_configEventDebouncer = nullptr;
 
     Debug.AddLine("event server stopped");
+}
+
+wxString EventServer::GetHttpBaseUrl() const
+{
+    if (!m_httpServerSocket || m_httpPort == 0)
+        return wxEmptyString;
+    return wxString::Format("http://127.0.0.1:%u/", m_httpPort);
 }
 
 void EventServer::OnEventServerEvent(wxSocketEvent& event)
@@ -3715,6 +5440,54 @@ void EventServer::OnEventServerClientEvent(wxSocketEvent& event)
     {
         Debug.Write(wxString::Format("unexpected client socket event %d\n", event.GetSocketEvent()));
     }
+}
+
+void EventServer::OnHttpServerEvent(wxSocketEvent& event)
+{
+    wxSocketServer *server = static_cast<wxSocketServer *>(event.GetSocket());
+    if (event.GetSocketEvent() != wxSOCKET_CONNECTION)
+        return;
+
+    wxSocketClient *client = static_cast<wxSocketClient *>(server->Accept(false));
+    if (!client)
+        return;
+
+    Debug.Write(wxString::Format("httpsrv: cli %p connect\n", client));
+
+    client->SetEventHandler(*this, HTTP_SERVER_CLIENT_ID);
+    client->SetNotify(wxSOCKET_LOST_FLAG | wxSOCKET_INPUT_FLAG);
+    client->SetFlags(wxSOCKET_NOWAIT);
+    client->Notify(true);
+    client->SetClientData(new HttpClientData(client));
+
+    m_httpServerClients.insert(client);
+}
+
+void EventServer::OnHttpServerClientEvent(wxSocketEvent& event)
+{
+    wxSocketClient *cli = static_cast<wxSocketClient *>(event.GetSocket());
+
+    if (event.GetSocketEvent() == wxSOCKET_LOST)
+    {
+        Debug.Write(wxString::Format("httpsrv: cli %p disconnect\n", cli));
+        m_httpServerClients.erase(cli);
+        destroy_http_client(cli);
+        return;
+    }
+
+    if (event.GetSocketEvent() == wxSOCKET_INPUT)
+    {
+        bool closeConn = handle_http_cli_input(this, cli);
+        if (closeConn)
+        {
+            // one-shot HTTP connection
+            m_httpServerClients.erase(cli);
+            destroy_http_client(cli);
+        }
+        return;
+    }
+
+    Debug.Write(wxString::Format("httpsrv: unexpected client socket event %d\n", event.GetSocketEvent()));
 }
 
 void EventServer::NotifyStartCalibration(const Mount *mount)

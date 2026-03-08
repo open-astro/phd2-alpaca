@@ -1,0 +1,1151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenAstro PHD2</title>
+  <style>
+    :root { --bg:#0b0a0b; --panel:#fff; --line:#e0e0e0; --line-2:#d4d4d4; --text:#222; --muted:#666; --accent:#72a12d; --soft:#f7f7f7; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); min-height:100vh; padding:20px; color:var(--text); }
+    .wrap { max-width:1200px; margin:0 auto; background:#fff; border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,.3); overflow:hidden; }
+    .brand { background:#4a4252; color:#fff; padding:30px; text-align:center; }
+    .brand h1 { margin:0 0 10px; font-size:2.5em; }
+    .title { display:inline-flex; align-items:center; gap:12px; justify-content:center; }
+    .logo { width:100px; height:100px; object-fit:contain; }
+    .sub { opacity:.9; font-size:1.1em; }
+    .sub a { color:inherit; text-decoration:none; }
+    .sub a:hover { text-decoration:underline; }
+    .panel { padding:30px; border-top:2px solid var(--line); background:#fff; }
+    #stepTitle { font-size:1.55rem; line-height:1.2; letter-spacing:.01em; }
+    #stepHelp { line-height:1.45; max-width:72ch; }
+    #stepBody { margin-top:14px !important; }
+    #stepBody > .box:first-child { margin-top:0; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:12px; }
+    .box {
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:var(--soft);
+      padding:16px;
+      margin-top:14px;
+      transition:border-color .2s, box-shadow .2s;
+    }
+    .box:hover,
+    .box:focus-within {
+      border-color:#72A12D;
+      box-shadow:0 4px 12px rgba(0,0,0,0.1);
+    }
+    .box strong { font-size:1.05rem; line-height:1.2; }
+    .section { margin-top:12px; padding-top:10px; border-top:1px dashed var(--line-2); }
+    .section:first-of-type { border-top:0; padding-top:0; }
+    .section-title { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:#4a4252; font-weight:700; margin-bottom:8px; }
+    .muted { color:var(--muted); font-size:13px; }
+    .wizard-nav { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; padding-top:14px; border-top:1px solid var(--line); }
+    .rightnav { display:flex; gap:8px; }
+    label { color:#333; font-size:14px; }
+    input,select { border:1px solid var(--line-2); border-radius:8px; padding:9px 11px; min-width:160px; min-height:40px; background:#fff; }
+    input:focus,select:focus { outline:none; border-color:#8bbb45; box-shadow:0 0 0 2px rgba(139,187,69,.18); }
+    input[type="checkbox"] { min-height:auto; min-width:auto; margin-right:8px; vertical-align:middle; }
+    input.small { min-width:88px; width:88px; }
+    button:not(.section-toggle) { border:none; border-radius:8px; padding:8px 12px; font-weight:700; cursor:pointer; background:var(--accent); color:#fff; transition: all .2s ease; }
+    button.alt { background:#e0e0e0; color:#333; }
+    button.warn { background:#f4bb6a; color:#5c3800; }
+    button.error { background:#ae0b3a; color:#fff; }
+    button:not(.section-toggle):hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.2); }
+    button:not(.section-toggle):active:not(:disabled) { transform: translateY(0); box-shadow: none; }
+    button:not(.section-toggle):focus-visible { outline: 2px solid #9fd44f; outline-offset: 2px; }
+    button:not(.section-toggle):disabled { opacity:.6; cursor:not-allowed; }
+    .status { margin:0 0 12px; border:1px solid #ddd; border-radius:10px; padding:10px 12px; background:#f3f3f3; white-space:pre-wrap; line-height:1.35; }
+    .status.ok { border-color:#a9d9b5; background:#eff9f1; color:#1f5f31; }
+    .status.warn { border-color:#f2ca96; background:#fff5e8; color:#7b3f00; }
+    .status.error { border-color:#efb1ad; background:#fff1f0; color:#7a1d18; }
+    .inline-note { margin-top:12px; margin-bottom:0; }
+    .progress-wrap { margin-top:10px; }
+    .progress-label { font-size:13px; color:var(--muted); margin-bottom:4px; }
+    .progress-track { width:100%; height:12px; border:1px solid #cfcfcf; border-radius:999px; background:#efefef; overflow:hidden; }
+    .progress-fill { height:100%; width:0%; background:linear-gradient(90deg,#72a12d,#8ec73a); transition:width .25s ease; }
+    .progress-pct { margin-top:4px; font-size:12px; color:var(--muted); }
+    .kv-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:8px 14px; }
+    .kv { display:flex; justify-content:space-between; gap:10px; background:#fff; border:1px solid var(--line); border-radius:8px; padding:7px 10px; }
+    .kv .k { color:#555; font-weight:600; }
+    .kv .v { color:#1f1f1f; font-weight:500; text-align:right; overflow-wrap:anywhere; }
+    .section-card {
+      background:#f9f9f9;
+      border:1px solid #e0e0e0;
+      border-radius:8px;
+      padding:20px;
+      margin-bottom:20px;
+    }
+    .section-card:hover {
+      box-shadow:0 4px 12px rgba(0,0,0,0.1);
+      border-color:#72A12D;
+    }
+    .section-card:not(.collapsed) {
+      border-color:#72A12D;
+    }
+    .device-panel:hover,
+    .device-panel:focus-within {
+      box-shadow:0 4px 12px rgba(0,0,0,0.1);
+      border-color:#72A12D;
+    }
+    .section-card.collapsed .section-card-body { display:none; }
+    .section-card-header { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .section-card-header h3 { color:#72A12D; }
+    .section-toggle {
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      border:1px solid #d0d0d0;
+      background:#fff;
+      color:#333;
+      padding:6px 10px;
+      border-radius:20px;
+      font-size:0.85em;
+      cursor:pointer;
+      transition:background 0.2s, border-color 0.2s;
+    }
+    .section-toggle:hover {
+      background:#f0f0f0;
+      border-color:#c0c0c0;
+    }
+    .section-toggle-icon {
+      width:0;
+      height:0;
+      border-left:6px solid transparent;
+      border-right:6px solid transparent;
+      border-top:8px solid #4A4252;
+      transition:transform .2s;
+    }
+    .section-card.collapsed .section-toggle-icon { transform: rotate(-90deg); }
+    .section-toggle-label { line-height:1; }
+    .section-card-body { margin-top:10px; }
+    .hidden { display:none; }
+    @media (max-width:640px) {
+      body { padding:10px; }
+      .wizard-nav { flex-direction:column; }
+      .rightnav { width:100%; }
+      .rightnav button { flex:1; }
+      input,select { width:100%; min-width:0; }
+      .title { font-size:1.6em; }
+      .logo { width:56px; height:56px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="brand">
+      <h1 class="title"><img src="/assets/oa512.png" alt="OpenAstro logo" class="logo">OpenAstro PHD2</h1>
+      <p class="sub"><a href="http://localhost:6800/" target="_blank" rel="noopener noreferrer">Profile Management</a></p>
+    </header>
+
+    <div class="panel">
+      <div id="status" class="status hidden"></div>
+      <h2 id="stepTitle" style="margin:0;"></h2>
+      <div id="stepHelp" class="muted" style="margin-top:4px;"></div>
+      <div id="stepBody" style="margin-top:12px;"></div>
+
+      <div id="wizardNav" class="wizard-nav">
+        <div class="rightnav">
+          <button id="backBtn" class="alt" onclick="goBack()">Back</button>
+          <button id="nextBtn" onclick="goNext()">Next</button>
+          <button id="finishBtn" class="warn hidden" onclick="finishWizard()">Finish + Build Darks</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const STEPS = [
+  { key:'profile', title:'Profile', help:'Create/select profiles. If none exist, create one before continuing.' },
+  { key:'camera', title:'Camera', help:'Select guide camera; Alpaca includes discovery/query/manual device selection.' },
+  { key:'mount', title:'Mount', help:'Select mount.' },
+  { key:'ao', title:'AO', help:'Select AO.' },
+  { key:'rotator', title:'Rotator', help:'Select rotator.' },
+  { key:'setup', title:'Profile Setup', help:'Set focal/pixel/calibration values.' },
+  { key:'finish', title:'Finish', help:'Connect gear and build dark frames.' }
+];
+
+const DARK_EXPOSURE_SECONDS = [
+  0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 15.0, 30.0
+];
+
+function formatDarkExposureLabel(seconds){
+  if (seconds < 0.1) return `${seconds.toFixed(2)} s`;
+  if (seconds < 1) return `${seconds.toFixed(1)} s`;
+  if (Number.isInteger(seconds)) return `${seconds} s`;
+  return `${seconds.toFixed(1)} s`;
+}
+
+const state = {
+  step: 0,
+  setup: null,
+  busy: false,
+  profileEditOpen: false,
+  finishInProgress: false,
+  alpacaCache: {},
+  alpaca: { servers: [], devices: { camera: [], mount: [], rotator: [] } },
+  finishProgress: { visible: false, percent: 0, text: '' },
+  chosen: {
+    camera: '', mount: '', ao: '', rotator: '', camera_id: '',
+    alpaca: {
+      host: '',
+      port: '',
+      camera_device: null,
+      telescope_device: null,
+      rotator_device: null
+    },
+    profile_setup: {}
+  }
+};
+
+const stepTitleEl = document.getElementById('stepTitle');
+const stepHelpEl = document.getElementById('stepHelp');
+const stepBodyEl = document.getElementById('stepBody');
+const wizardNavEl = document.getElementById('wizardNav');
+const backBtn = document.getElementById('backBtn');
+const nextBtn = document.getElementById('nextBtn');
+const finishBtn = document.getElementById('finishBtn');
+const statusEl = document.getElementById('status');
+let busyToken = 0;
+let busyTimer = null;
+
+function setStatus(text, cls='') {
+  const msg = String(text || '').trim();
+  statusEl.className = `status ${cls}`.trim();
+  statusEl.textContent = msg;
+  statusEl.classList.toggle('hidden', !msg);
+}
+function setBusy(on) {
+  state.busy = on;
+  [backBtn, nextBtn, finishBtn].forEach((b)=>b.disabled=on);
+
+  if (busyTimer) {
+    clearTimeout(busyTimer);
+    busyTimer = null;
+  }
+
+  if (on) {
+    const token = ++busyToken;
+    busyTimer = setTimeout(() => {
+      if (state.busy && token === busyToken) {
+        state.busy = false;
+        [backBtn, nextBtn, finishBtn].forEach((b)=>b.disabled=false);
+        setStatus('Action timed out. You can retry now.', 'warn');
+      }
+    }, 45000);
+  }
+}
+function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;'); }
+
+async function api(path, method='GET', body=null, signal=null){
+  const opts = { method, headers:{} };
+  if (body !== null){ opts.headers['Content-Type']='application/json'; opts.body=JSON.stringify(body); }
+  if (signal) opts.signal = signal;
+  const res = await fetch(path, opts);
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || 'request failed');
+  return data;
+}
+
+async function rpc(method, params=null, timeoutS=null, signal=null){
+  const payload = { method };
+  if (params !== null) payload.params = params;
+  if (timeoutS !== null) payload.timeout_s = timeoutS;
+  return api('/api/rpc', 'POST', payload, signal);
+}
+
+function hasProfiles(){ return Array.isArray(state.setup?.profiles) && state.setup.profiles.length > 0; }
+function selectedProfileId(){ return Number(state.setup?.profile?.id || 0); }
+function selectedProfileName(){ return String(state.setup?.profile?.name || ''); }
+function hasConfiguredProfile(){
+  const profiles = state.setup?.profiles || [];
+  if (!profiles.length) return false;
+  return !(
+    profiles.length === 1 &&
+    isNoneChoice(state.setup?.selected_camera) &&
+    isNoneChoice(state.setup?.selected_mount)
+  );
+}
+function isAlpacaChoice(choice){ return String(choice || '').toLowerCase().includes('alpaca'); }
+function isNoneChoice(v){ const s = String(v || '').trim().toLowerCase(); return !s || s === 'none'; }
+function shouldShowManageProfiles(){
+  const profiles = state.setup?.profiles || [];
+  if (profiles.length === 0) return false;
+  if (profiles.length > 1) return true;
+  // Hide manage actions for the single auto-created empty profile.
+  // Show for a single configured profile.
+  return !(
+    isNoneChoice(state.setup?.selected_camera) &&
+    isNoneChoice(state.setup?.selected_mount)
+  );
+}
+
+function alpacaDeviceTypeForStep(stepType){ if (stepType==='camera') return 'CAMERA'; if (stepType==='mount') return 'MOUNT'; if (stepType==='rotator') return 'ROTATOR'; return ''; }
+function alpacaDeviceKeyForStep(stepType){ if (stepType==='camera') return 'camera_device'; if (stepType==='mount') return 'telescope_device'; if (stepType==='rotator') return 'rotator_device'; return ''; }
+
+function optionsHtml(items, selected){
+  const list = Array.isArray(items) ? items : [];
+  return list.map((v)=>`<option value="${escapeHtml(v)}" ${v===selected?'selected':''}>${escapeHtml(v)}</option>`).join('');
+}
+
+function yesNo(v){ return v ? 'Yes' : 'No'; }
+function fmtValue(v, fallback='(none)'){
+  if (v === null || v === undefined) return fallback;
+  const s = String(v).trim();
+  return s ? s : fallback;
+}
+function hasValue(v){
+  return !(v === null || v === undefined || String(v).trim() === '');
+}
+function kv(label, value){
+  return `<div class="kv"><span class="k">${escapeHtml(label)}</span><span class="v">${escapeHtml(String(value))}</span></div>`;
+}
+
+function renderProfileSummary(){
+  const s = state.setup || {};
+  const profileName = String(s?.profile?.name || '').trim();
+  const profileTitle = `${profileName || 'Current'} Profile Settings`;
+  const ps = s.profile_setup || {};
+  const ds = s.dark_status || {};
+  const eq = s.current_equipment || {};
+  const alp = s.alpaca_server || {};
+  const alpHost = String(alp.host || '').trim();
+  const hasAlp = alpHost && alpHost.toLowerCase() !== 'localhost';
+  const darkCountLoaded = Number(ds.dark_count_loaded || 0);
+  const darkMinLoaded = Number(ds.dark_min_exposure_seconds_loaded);
+  const darkMaxLoaded = Number(ds.dark_max_exposure_seconds_loaded);
+  const showLoadedRange = darkCountLoaded > 0 && Number.isFinite(darkMinLoaded) && Number.isFinite(darkMaxLoaded) && darkMinLoaded <= darkMaxLoaded;
+  const darkRangeLooksMs = showLoadedRange && (darkMinLoaded > 100 || darkMaxLoaded > 100);
+  const darkRangeDisplay = showLoadedRange
+    ? (darkRangeLooksMs
+      ? `${(darkMinLoaded / 1000).toFixed(2)} - ${(darkMaxLoaded / 1000).toFixed(2)}`
+      : `${darkMinLoaded} - ${darkMaxLoaded}`)
+    : '(not loaded)';
+
+  const cameraName = String(eq?.camera?.name || '').trim();
+  const mountName = String(eq?.mount?.name || '').trim();
+  const rotatorName = String(eq?.rotator?.name || '').trim();
+  const aoName = String((eq?.AO?.name ?? eq?.ao?.name) || '').trim();
+  const cameraId = String(s.selected_camera_id || '').trim();
+
+  const equipmentRows = [
+    kv('Camera', fmtValue(cameraName || s.selected_camera)),
+    ...(hasValue(cameraId) ? [kv('Camera ID', cameraId)] : []),
+    kv('Mount', fmtValue(mountName || s.selected_mount)),
+    kv('AO', fmtValue(aoName || s.selected_ao)),
+    kv('Rotator', fmtValue(rotatorName || s.selected_rotator))
+  ].join('');
+
+  const alpacaRows = [
+    kv('Alpaca Server', hasAlp ? `${alp.host}:${alp.port}` : '(none)'),
+    kv('Alpaca Camera #', fmtValue(alp.camera_device)),
+    kv('Alpaca Mount #', fmtValue(alp.telescope_device)),
+    kv('Alpaca Rotator #', fmtValue(alp.rotator_device))
+  ].join('');
+
+  const imagingRows = [
+    kv('Focal Length (mm)', fmtValue(ps.focal_length)),
+    kv('Pixel Size (um)', fmtValue(ps.pixel_size)),
+    kv('Camera Binning', fmtValue(ps.camera_binning)),
+    kv('Software Binning', fmtValue(ps.software_binning))
+  ].join('');
+
+  const guidingRows = [
+    kv('Guide Speed', fmtValue(ps.guide_speed)),
+    kv('Calibration Duration (ms)', fmtValue(ps.calibration_duration)),
+    kv('Calibration Distance (px)', fmtValue(ps.calibration_distance)),
+    kv('High-res encoders', yesNo(!!ps.high_res_encoders)),
+    kv('Auto-restore calibration', yesNo(!!ps.auto_restore_calibration)),
+    kv('Multi-star', yesNo(!!ps.multistar_enabled))
+  ].join('');
+
+  const darkRows = [
+    kv('Dark library file', fmtValue(ds.dark_library_path)),
+    kv('Exists', yesNo(!!ds.dark_library_exists)),
+    kv('Loaded', yesNo(!!ds.dark_library_loaded)),
+    kv('Compatible', yesNo(!!ds.dark_library_compatible)),
+    kv('Master dark exposures loaded', fmtValue(darkCountLoaded, '0')),
+    kv('Loaded range (s)', darkRangeDisplay),
+    kv('Auto-load darks', yesNo(!!ds.auto_load_darks))
+  ].join('');
+
+  return `
+    <div class="box section-card collapsed">
+      <div class="section-card-header">
+        <h3>${escapeHtml(profileTitle)}</h3>
+        <button class="section-toggle" type="button" aria-expanded="false">
+          <span class="section-toggle-icon" aria-hidden="true"></span>
+          <span class="section-toggle-label">Details</span>
+        </button>
+      </div>
+      <div class="section-card-body">
+      <div class="section">
+        <div class="section-title">Equipment</div>
+        <div class="kv-grid">${equipmentRows}</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Alpaca</div>
+        <div class="kv-grid">${alpacaRows}</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Imaging Profile</div>
+        <div class="kv-grid">${imagingRows}</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Guiding</div>
+        <div class="kv-grid">${guidingRows}</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Dark Library</div>
+        <div class="kv-grid">${darkRows}</div>
+      </div>
+      </div>
+    </div>
+  `;
+}
+
+function profileOptionsHtml(){
+  return (state.setup?.profiles || []).map((p)=>`<option value="${p.id}" ${Number(p.id)===selectedProfileId()?'selected':''}>${p.id} - ${escapeHtml(p.name)}</option>`).join('');
+}
+
+function alpacaDeviceOptionsHtml(stepType){
+  const devices = state.alpaca.devices[stepType] || [];
+  const key = alpacaDeviceKeyForStep(stepType);
+  const selectedNum = state.chosen.alpaca[key];
+  if (!devices.length) return '<option value="">(no devices loaded yet)</option>';
+  return devices.map((d)=>{
+    const n = Number(d.device_number);
+    const label = d.display || `Device ${n}`;
+    return `<option value="${n}" ${Number(selectedNum)===n?'selected':''}>${escapeHtml(label)}</option>`;
+  }).join('');
+}
+
+async function tryApplyAlpacaCameraPixelSize(host, port, devNum){
+  if (!Number.isFinite(devNum) || devNum < 0) return false;
+  try {
+    const px = await rpc('get_alpaca_camera_pixelsize', { host, port, device_number: devNum }, 15);
+    const pixelSize = Number(px?.result?.pixel_size);
+    if (!Number.isFinite(pixelSize) || pixelSize <= 0) return false;
+    await rpc('set_profile_setup', { pixel_size: pixelSize });
+    state.chosen.profile_setup.pixel_size = pixelSize;
+    const pixelEl = document.getElementById('pixelSize');
+    if (pixelEl) pixelEl.value = String(pixelSize);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function tryApplySelectedCameraPixelSize(){
+  try {
+    const px = await rpc('get_selected_camera_pixelsize', null, 25);
+    const pixelSize = Number(px?.result?.pixel_size);
+    if (!Number.isFinite(pixelSize) || pixelSize <= 0) return false;
+    await rpc('set_profile_setup', { pixel_size: pixelSize });
+    state.chosen.profile_setup.pixel_size = pixelSize;
+    const pixelEl = document.getElementById('pixelSize');
+    if (pixelEl) pixelEl.value = String(pixelSize);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function onAlpacaDeviceChanged(stepType){
+  if (stepType !== 'camera' || state.busy) return;
+  try {
+    const { host, port } = readAlpacaServerInputs(stepType);
+    const devNum = Number(document.getElementById(`alpacaDevice_${stepType}`)?.value);
+    const ok = await tryApplyAlpacaCameraPixelSize(host, port, devNum);
+    if (ok) setStatus(`Pixel size auto-filled from Alpaca camera device ${devNum}.`, 'ok');
+  } catch (_) {
+    // non-fatal; ignore until host/port is valid
+  }
+}
+
+function readAlpacaServerInputs(stepType){
+  const host = (document.getElementById(`alpacaHost_${stepType}`)?.value || '').trim();
+  const port = Number(document.getElementById(`alpacaPort_${stepType}`)?.value || 0);
+  if (!host) throw new Error('Enter Alpaca host.');
+  if (!Number.isFinite(port) || port < 1 || port > 65535) throw new Error('Enter Alpaca port (1..65535).');
+  state.chosen.alpaca.host = host;
+  state.chosen.alpaca.port = port;
+  localStorage.setItem('oa_phd2_alpaca_host', host);
+  localStorage.setItem('oa_phd2_alpaca_port', String(port));
+  return { host, port };
+}
+
+function readAlpacaManualDevice(stepType){
+  const v = Number(document.getElementById(`alpacaManual_${stepType}`)?.value);
+  return Number.isFinite(v) && v >= 0 ? v : null;
+}
+
+function cacheKey(host, port, dtype){ return `${String(host).trim().toLowerCase()}:${Number(port)}:${dtype}`; }
+
+function onGearChoiceChanged(stepType, value){
+  if (stepType==='camera') state.chosen.camera = value;
+  if (stepType==='mount') state.chosen.mount = value;
+  if (stepType==='ao') state.chosen.ao = value;
+  if (stepType==='rotator') state.chosen.rotator = value;
+  render();
+}
+
+function syncChosenFromSetup(){
+  const s = state.setup || {};
+  state.chosen.camera = s.selected_camera || state.chosen.camera;
+  state.chosen.mount = s.selected_mount || state.chosen.mount;
+  state.chosen.ao = s.selected_ao || state.chosen.ao;
+  state.chosen.rotator = s.selected_rotator || state.chosen.rotator;
+  state.chosen.camera_id = s.selected_camera_id || state.chosen.camera_id;
+  if (s.alpaca_server){
+    const setupHost = String(s.alpaca_server.host || '').trim();
+    const setupPort = Number(s.alpaca_server.port || 0);
+    if (setupHost && setupHost.toLowerCase() !== 'localhost') {
+      state.chosen.alpaca.host = setupHost;
+    } else {
+      state.chosen.alpaca.host = '';
+    }
+    if (setupHost && setupHost.toLowerCase() !== 'localhost' && Number.isFinite(setupPort) && setupPort > 0) {
+      state.chosen.alpaca.port = setupPort;
+    } else {
+      state.chosen.alpaca.port = '';
+    }
+    state.chosen.alpaca.camera_device = Number.isFinite(Number(s.alpaca_server.camera_device)) ? Number(s.alpaca_server.camera_device) : null;
+    state.chosen.alpaca.telescope_device = Number.isFinite(Number(s.alpaca_server.telescope_device)) ? Number(s.alpaca_server.telescope_device) : null;
+    state.chosen.alpaca.rotator_device = Number.isFinite(Number(s.alpaca_server.rotator_device)) ? Number(s.alpaca_server.rotator_device) : null;
+  }
+  if (s.profile_setup){
+    state.chosen.profile_setup = {
+      focal_length: s.profile_setup.focal_length,
+      pixel_size: s.profile_setup.pixel_size,
+      camera_binning: s.profile_setup.camera_binning,
+      software_binning: s.profile_setup.software_binning,
+      guide_speed: s.profile_setup.guide_speed,
+      calibration_duration: s.profile_setup.calibration_duration,
+      calibration_distance: s.profile_setup.calibration_distance,
+      high_res_encoders: !!s.profile_setup.high_res_encoders,
+      auto_restore_calibration: !!s.profile_setup.auto_restore_calibration,
+      multistar_enabled: !!s.profile_setup.multistar_enabled
+    };
+  }
+}
+
+async function refreshAll(showMessage=false){
+  try {
+    setBusy(true);
+    const data = await api('/api/setup');
+    state.setup = data.setup;
+    syncChosenFromSetup();
+    render();
+    if (showMessage) setStatus('Wizard state refreshed.', 'ok');
+  } catch (err) {
+    setStatus(`Failed to refresh setup: ${err.message}`, 'error');
+  } finally {
+    setBusy(false);
+  }
+}
+
+function renderProfileStep(){
+  const noProfiles = !hasConfiguredProfile();
+  const showManage = shouldShowManageProfiles();
+  const profileSummary = noProfiles ? '' : renderProfileSummary();
+  const p = state.chosen.profile_setup || {};
+  stepBodyEl.innerHTML = `
+    <div class="box">
+      <div><strong>Create profile</strong></div>
+      <div class="row"><input id="newProfileName" placeholder="Profile name" /><button onclick="createProfile()">Create + Next</button></div>
+    </div>
+    <div class="box ${(noProfiles || !showManage)?'hidden':''}">
+      <div><strong>Manage existing profile</strong></div>
+      <div class="row"><select id="profileSelect">${profileOptionsHtml()}</select><button onclick="switchProfile()">Use Selected</button><button class="alt" onclick="editSelectedProfile()">Edit Selected</button><button class="error" onclick="deleteProfile()">Delete Selected</button></div>
+      <div class="row"><input id="renameProfileName" placeholder="New name" /><button onclick="renameProfile()">Rename</button></div>
+      <div class="row"><label><input id="deleteProfileDarks" type="checkbox" checked /> Delete dark files for deleted profile</label></div>
+      <div class="row"><label><input id="rebuildAfterDelete" type="checkbox" /> Rebuild darks after delete</label></div>
+    </div>
+    <div class="box ${(noProfiles || !showManage || !state.profileEditOpen)?'hidden':''}">
+      <div><strong>Edit profile setup values</strong></div>
+      <div class="row">
+        <label>Focal Length (mm)<br><input id="editFocalLength" class="small" type="number" value="${escapeHtml(p.focal_length ?? '')}" /></label>
+        <label>Camera Binning (x)<br><input id="editCameraBinning" class="small" type="number" value="${escapeHtml(p.camera_binning ?? '')}" /></label>
+        <label>Software Binning (x)<br><input id="editSoftwareBinning" class="small" type="number" value="${escapeHtml(p.software_binning ?? '')}" /></label>
+      </div>
+      <div class="row">
+        <label>Guide Speed (x sidereal)<br><input id="editGuideSpeed" class="small" type="number" step="0.01" value="${escapeHtml(p.guide_speed ?? '')}" /></label>
+        <label>Calibration Duration (ms)<br><input id="editCalDuration" class="small" type="number" value="${escapeHtml(p.calibration_duration ?? '')}" /></label>
+        <label>Calibration Distance (px)<br><input id="editCalDistance" class="small" type="number" value="${escapeHtml(p.calibration_distance ?? '')}" /></label>
+      </div>
+      <div class="row">
+        <label><input id="editHighResEncoders" type="checkbox" ${p.high_res_encoders?'checked':''} /> High-res encoders</label>
+        <label><input id="editAutoRestore" type="checkbox" ${p.auto_restore_calibration?'checked':''} /> Auto-restore calibration</label>
+        <label><input id="editMultistar" type="checkbox" ${p.multistar_enabled?'checked':''} /> Multi-star</label>
+      </div>
+      <div class="row">
+        <button onclick="saveEditedProfileSetup()">Save Changes</button>
+        <button class="alt" onclick="cancelEditProfile()">Cancel</button>
+      </div>
+    </div>
+    ${profileSummary}
+    ${noProfiles?'<div class="status warn inline-note">No configured profile exists yet. Create one to continue.</div>':''}
+  `;
+}
+
+function renderGearStep(type){
+  const choices = state.setup?.equipment_choices || {};
+  const map = {
+    camera: { label:'Camera', items:choices.camera||[], chosen:state.chosen.camera, id:'cameraChoice' },
+    mount: { label:'Mount', items:choices.mount||[], chosen:state.chosen.mount, id:'mountChoice' },
+    ao: { label:'AO', items:choices.AO||[], chosen:state.chosen.ao, id:'aoChoice' },
+    rotator: { label:'Rotator', items:choices.rotator||[], chosen:state.chosen.rotator, id:'rotatorChoice' }
+  };
+  const cfg = map[type];
+  const showAlpaca = isAlpacaChoice(cfg.chosen) && ['camera','mount','rotator'].includes(type);
+  const extra = type==='camera' ? `<div class="row"><input id="cameraId" placeholder="Optional camera ID" value="${escapeHtml(state.chosen.camera_id||'')}" /></div>` : '';
+  const alpacaBox = showAlpaca ? `
+    <div class="box">
+      <div><strong>Alpaca ${cfg.label} Discovery</strong></div>
+      <div class="row"><input id="alpacaHost_${type}" value="${escapeHtml(state.chosen.alpaca.host || '')}" placeholder="Host/IP" /><input id="alpacaPort_${type}" class="small" type="number" value="${escapeHtml(state.chosen.alpaca.port ?? '')}" min="1" max="65535" placeholder="Port" /></div>
+      <div class="row"><button class="alt" onclick="discoverAlpacaServers('${type}')">Discover Alpaca Servers</button><button class="alt" onclick="testAlpacaServer('${type}')">Test Server</button><button class="alt" onclick="queryAlpacaDevices('${type}')">Query ${cfg.label} Devices</button></div>
+      <div class="row"><select id="alpacaDevice_${type}" onchange="onAlpacaDeviceChanged('${type}')">${alpacaDeviceOptionsHtml(type)}</select><button onclick="applyAlpacaDevice('${type}')">Use Selected ${cfg.label} Device</button></div>
+      <div class="row"><input id="alpacaManual_${type}" class="small" type="number" min="0" placeholder="Device #" value="${escapeHtml(state.chosen.alpaca[alpacaDeviceKeyForStep(type)] ?? '')}" /><button class="alt" onclick="applyManualAlpacaDevice('${type}')">Use Manual Device #</button></div>
+      <div class="muted">Manual device number works even if discovery/query is unavailable.</div>
+    </div>
+  ` : '';
+  stepBodyEl.innerHTML = `
+    <div class="box device-panel">
+      <div><strong>Select ${cfg.label}</strong></div>
+      <div class="row"><select id="${cfg.id}" onchange="onGearChoiceChanged('${type}', this.value)">${optionsHtml(cfg.items, cfg.chosen)}</select></div>
+      ${extra}
+    </div>
+    ${alpacaBox.replace('<div class="box">','<div class="box device-panel">')}
+  `;
+}
+
+function renderSetupStep(){
+  const p = state.chosen.profile_setup || {};
+  stepBodyEl.innerHTML = `
+    <div class="box">
+      <div><strong>Guide Scope setup values</strong></div>
+      <div class="row">
+        <label>Focal Length (mm)<br><input id="focalLength" class="small" type="number" placeholder="e.g. 400" value="${escapeHtml(p.focal_length ?? '')}" /></label>
+        <label>Pixel Size (um)<br><input id="pixelSize" class="small" type="number" step="0.01" placeholder="auto from connected camera" value="${escapeHtml(p.pixel_size ?? '')}" readonly title="Automatically populated from selected camera" /></label>
+        <label>Camera Binning (x)<br><input id="cameraBinning" class="small" type="number" placeholder="e.g. 1" value="${escapeHtml(p.camera_binning ?? '')}" /></label>
+        <label>Software Binning (x)<br><input id="softwareBinning" class="small" type="number" placeholder="e.g. 1" value="${escapeHtml(p.software_binning ?? '')}" /></label>
+      </div>
+      <div class="row">
+        <label>Guide Speed (x sidereal)<br><input id="guideSpeed" class="small" type="number" step="0.01" placeholder="e.g. 0.5" value="${escapeHtml(p.guide_speed ?? '')}" /></label>
+        <label>Calibration Duration (ms)<br><input id="calDuration" class="small" type="number" placeholder="e.g. 750" value="${escapeHtml(p.calibration_duration ?? '')}" /></label>
+        <label>Calibration Distance (px)<br><input id="calDistance" class="small" type="number" placeholder="e.g. 25" value="${escapeHtml(p.calibration_distance ?? '')}" /></label>
+      </div>
+      <div class="row"><label><input id="highResEncoders" type="checkbox" ${p.high_res_encoders?'checked':''} /> High-res encoders</label><label><input id="autoRestore" type="checkbox" ${p.auto_restore_calibration?'checked':''} /> Auto-restore calibration</label><label><input id="multistar" type="checkbox" ${p.multistar_enabled?'checked':''} /> Multi-star</label></div>
+    </div>
+  `;
+}
+
+async function syncSetupPixelSizeFromCamera(){
+  const pixelEl = document.getElementById('pixelSize');
+  if (!pixelEl) return;
+
+  if (isAlpacaChoice(state.chosen.camera)) {
+    const host = String(state.chosen.alpaca.host || '').trim();
+    const port = Number(state.chosen.alpaca.port || 0);
+    const devNum = Number(state.chosen.alpaca.camera_device);
+    if (host && Number.isFinite(port) && port > 0 && Number.isFinite(devNum) && devNum >= 0) {
+      const ok = await tryApplyAlpacaCameraPixelSize(host, port, devNum);
+      if (ok) return;
+    }
+  }
+
+  const genericOk = await tryApplySelectedCameraPixelSize();
+  if (genericOk) return;
+
+  const pixelSize = Number(state.chosen.profile_setup?.pixel_size);
+  if (Number.isFinite(pixelSize) && pixelSize > 0) {
+    pixelEl.value = String(pixelSize);
+  }
+}
+
+function renderFinishStep(){
+  const fp = state.finishProgress || { visible:false, percent:0, text:'' };
+  const exposureOptions = DARK_EXPOSURE_SECONDS.map((s)=>`<option value="${s}">${formatDarkExposureLabel(s)}</option>`).join('');
+  stepBodyEl.innerHTML = `
+    <div class="box"><div><strong>Final checks</strong></div><div class="row"><label><input id="connectBeforeDarks" type="checkbox" checked /> Connect equipment before darks</label></div></div>
+    <div class="box">
+      <div><strong>Dark Library</strong></div>
+      <div class="row">
+        <label>Min Exposure Time:<br><select id="darkMinExp">${exposureOptions}</select></label>
+        <label>Max Exposure Time:<br><select id="darkMaxExp">${exposureOptions}</select></label>
+      </div>
+      <div class="row">
+        <label>Frames to take for each exposure time:<br><input id="darkFrameCount" class="small" type="number" value="5" min="1" max="50" /></label>
+        <label><input id="darkClearExisting" type="checkbox" checked /> Clear existing</label>
+      </div>
+    </div>
+    <div id="finishProgressBox" class="box progress-wrap ${fp.visible?'':'hidden'}">
+      <div class="progress-label" id="finishProgressLabel">${escapeHtml(fp.text || 'Preparing...')}</div>
+      <div class="progress-track"><div id="finishProgressFill" class="progress-fill" style="width:${Math.max(0, Math.min(100, Number(fp.percent)||0))}%"></div></div>
+      <div class="progress-pct" id="finishProgressPct">${Math.round(Math.max(0, Math.min(100, Number(fp.percent)||0)))}%</div>
+    </div>
+  `;
+  const minSel = document.getElementById('darkMinExp');
+  const maxSel = document.getElementById('darkMaxExp');
+  if (minSel) minSel.value = '1';
+  if (maxSel) maxSel.value = '3';
+}
+
+let finishProgressTimer = null;
+
+function updateFinishProgress(percent, text, visible=true){
+  const p = Math.max(0, Math.min(100, Number(percent) || 0));
+  state.finishProgress = { visible, percent: p, text: text || '' };
+  const box = document.getElementById('finishProgressBox');
+  const fill = document.getElementById('finishProgressFill');
+  const lbl = document.getElementById('finishProgressLabel');
+  const pct = document.getElementById('finishProgressPct');
+  if (!box || !fill || !lbl || !pct) return;
+  box.classList.toggle('hidden', !visible);
+  fill.style.width = `${p}%`;
+  lbl.textContent = text || '';
+  pct.textContent = `${Math.round(p)}%`;
+}
+
+function startFinishProgressPulse(label, fromPct, toPct){
+  if (finishProgressTimer) clearInterval(finishProgressTimer);
+  let p = Math.max(0, Math.min(100, Number(fromPct) || 0));
+  const end = Math.max(p, Math.min(100, Number(toPct) || p));
+  updateFinishProgress(p, label, true);
+  finishProgressTimer = setInterval(() => {
+    p = Math.min(end, p + 1);
+    updateFinishProgress(p, label, true);
+    if (p >= end && finishProgressTimer) {
+      clearInterval(finishProgressTimer);
+      finishProgressTimer = null;
+    }
+  }, 1200);
+}
+
+function stopFinishProgressPulse(){
+  if (finishProgressTimer) {
+    clearInterval(finishProgressTimer);
+    finishProgressTimer = null;
+  }
+}
+
+function render(){
+  const step = STEPS[state.step];
+  stepTitleEl.textContent = step.title;
+  stepHelpEl.textContent = step.help;
+  if (step.key==='profile') renderProfileStep();
+  if (step.key==='camera') renderGearStep('camera');
+  if (step.key==='mount') renderGearStep('mount');
+  if (step.key==='ao') renderGearStep('ao');
+  if (step.key==='rotator') renderGearStep('rotator');
+  if (step.key==='setup') { renderSetupStep(); void syncSetupPixelSizeFromCamera(); }
+  if (step.key==='finish') renderFinishStep();
+  const onProfileStep = step.key === 'profile';
+  backBtn.disabled = state.busy || state.step===0;
+  backBtn.classList.toggle('hidden', onProfileStep);
+  nextBtn.classList.toggle('hidden', step.key==='finish' || onProfileStep);
+  finishBtn.classList.toggle('hidden', step.key!=='finish');
+  wizardNavEl.classList.toggle('hidden', onProfileStep);
+}
+
+async function ensureDisconnected(){ if (state.setup?.connected){ await rpc('set_connected', { connected:false }); await refreshAll(); } }
+async function ensureConnected(){ if (!state.setup?.connected){ await rpc('set_connected', { connected:true }); await refreshAll(); } }
+
+async function createProfile(){
+  if (state.busy) return;
+  const name = (document.getElementById('newProfileName')?.value || '').trim();
+  if (!name) return setStatus('Enter a profile name.', 'warn');
+  try {
+    setBusy(true);
+    await ensureDisconnected();
+
+    const profiles = state.setup?.profiles || [];
+    const bootstrapEmpty = profiles.length === 1 && isNoneChoice(state.setup?.selected_camera) && isNoneChoice(state.setup?.selected_mount);
+
+    if (bootstrapEmpty) {
+      // First-run UX: rename the initial empty profile instead of creating another one.
+      await rpc('rename_profile', { id: selectedProfileId(), new_name: name });
+      await refreshAll();
+      if (state.step < STEPS.length - 1) state.step++;
+      render();
+      setStatus(`Profile renamed to ${name}. Continuing to Camera setup.`, 'ok');
+      return;
+    }
+
+    try {
+      await rpc('create_profile', { name, select:true });
+      await refreshAll();
+      if (state.step < STEPS.length - 1) state.step++;
+      render();
+      setStatus(`Profile created: ${name}. Continuing to Camera setup.`, 'ok');
+    } catch (e) {
+      const msg = String(e?.message || e);
+      if (!msg.includes('invalid profile id')) throw e;
+      // Workaround for backend selection quirk: create without selecting.
+      await rpc('create_profile', { name, select:false });
+      await refreshAll();
+      if (state.step < STEPS.length - 1) state.step++;
+      render();
+      setStatus(`Profile created (${name}). Continuing to Camera setup. Select it from profile list if needed.`, 'warn');
+    }
+  }
+  catch(e){ setStatus(`Create profile failed: ${e.message}`, 'error'); }
+  finally { setBusy(false); }
+}
+
+async function switchProfile(){
+  if (state.busy) return;
+  const id = Number(document.getElementById('profileSelect')?.value || 0);
+  if (!id) return setStatus('Select a profile first.', 'warn');
+  try { setBusy(true); await ensureDisconnected(); await rpc('set_profile', { id }); state.profileEditOpen = false; await refreshAll(); setStatus(`Switched profile: ${id}`, 'ok'); }
+  catch(e){ setStatus(`Switch failed: ${e.message}`, 'error'); }
+  finally { setBusy(false); }
+}
+
+async function editSelectedProfile(){
+  if (state.busy) return;
+  const id = Number(document.getElementById('profileSelect')?.value || 0);
+  if (!id) return setStatus('Select a profile first.', 'warn');
+  try {
+    setBusy(true);
+    await ensureDisconnected();
+    if (id !== selectedProfileId()) await rpc('set_profile', { id });
+    await refreshAll();
+    state.profileEditOpen = true;
+    render();
+    setStatus(`Editing profile: ${selectedProfileName()}`, 'ok');
+  } catch (e) {
+    setStatus(`Edit setup failed: ${e.message}`, 'error');
+  } finally {
+    setBusy(false);
+  }
+}
+
+function cancelEditProfile(){
+  if (state.busy) return;
+  state.profileEditOpen = false;
+  render();
+}
+
+async function saveEditedProfileSetup(){
+  if (state.busy) return;
+  const id = Number(document.getElementById('profileSelect')?.value || 0);
+  if (!id) return setStatus('Select a profile first.', 'warn');
+  try {
+    setBusy(true);
+    await ensureDisconnected();
+    if (id !== selectedProfileId()) await rpc('set_profile', { id });
+    const payload = {
+      focal_length: Number(document.getElementById('editFocalLength')?.value),
+      camera_binning: Number(document.getElementById('editCameraBinning')?.value),
+      software_binning: Number(document.getElementById('editSoftwareBinning')?.value),
+      guide_speed: Number(document.getElementById('editGuideSpeed')?.value),
+      calibration_duration: Number(document.getElementById('editCalDuration')?.value),
+      calibration_distance: Number(document.getElementById('editCalDistance')?.value),
+      high_res_encoders: !!document.getElementById('editHighResEncoders')?.checked,
+      auto_restore_calibration: !!document.getElementById('editAutoRestore')?.checked,
+      multistar_enabled: !!document.getElementById('editMultistar')?.checked
+    };
+    Object.keys(payload).forEach((k)=>{ if (typeof payload[k]==='number' && !Number.isFinite(payload[k])) delete payload[k]; });
+    await rpc('set_profile_setup', payload);
+    state.profileEditOpen = false;
+    await refreshAll();
+    setStatus(`Saved profile setup for '${selectedProfileName()}'.`, 'ok');
+  } catch (e) {
+    setStatus(`Save failed: ${e.message}`, 'error');
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function renameProfile(){
+  if (state.busy) return;
+  const id = Number(document.getElementById('profileSelect')?.value || 0);
+  const newName = (document.getElementById('renameProfileName')?.value || '').trim();
+  if (!id || !newName) return setStatus('Select profile and enter new name.', 'warn');
+  try { setBusy(true); await ensureDisconnected(); await rpc('rename_profile', { id, new_name:newName }); state.profileEditOpen = false; await refreshAll(); setStatus(`Renamed to ${newName}`, 'ok'); }
+  catch(e){ setStatus(`Rename failed: ${e.message}`, 'error'); }
+  finally { setBusy(false); }
+}
+
+async function deleteProfile(){
+  if (state.busy) return;
+  const id = Number(document.getElementById('profileSelect')?.value || 0);
+  if (!id) return setStatus('Select a profile to delete.', 'warn');
+  if (!confirm(`Delete profile ${id}?`)) return;
+  const deleteDarks = !!document.getElementById('deleteProfileDarks')?.checked;
+  const rebuild = !!document.getElementById('rebuildAfterDelete')?.checked;
+  const countBefore = (state.setup?.profiles || []).length;
+  try {
+    setBusy(true);
+    await ensureDisconnected();
+    const resp = await rpc('delete_profile', { id, delete_dark_files: deleteDarks });
+    state.profileEditOpen = false;
+    await refreshAll();
+    const currentName = resp?.result?.current_profile?.name || selectedProfileName();
+    if (rebuild && hasProfiles()) { await ensureConnected(); await rpc('build_dark_library', { frame_count:5, clear_existing:true, load_after:true }); }
+    if (countBefore <= 1) setStatus(`Profile deleted. PHD2 recreated '${currentName}'.`, 'ok');
+    else setStatus('Profile deleted.', 'ok');
+  } catch (e) { setStatus(`Delete failed: ${e.message}`, 'error'); }
+  finally { setBusy(false); }
+}
+
+async function discoverAlpacaServers(stepType){
+  if (state.busy) return setStatus('Please wait for the current action to finish.', 'warn');
+  try {
+    setBusy(true);
+    setStatus('Discovering Alpaca servers, please wait a moment...', 'warn');
+    const r = await api('/api/discover/alpaca?num_queries=3&timeout_seconds=2');
+    const servers = Array.isArray(r?.servers) ? r.servers : [];
+    state.alpaca.servers = servers;
+    if (servers.length){ const first = String(servers[0]).split(':'); if (first.length===2){ state.chosen.alpaca.host = first[0]; state.chosen.alpaca.port = Number(first[1]) || 6800; } render(); setStatus(`Found Alpaca servers: ${servers.join(', ')}`, 'ok'); }
+    else setStatus('No Alpaca servers discovered via UDP. Use Test Server with a direct host/IP and port.', 'warn');
+  } catch(e){ setStatus(`Alpaca discovery failed: ${e.message}`, 'error'); }
+  finally { setBusy(false); }
+}
+
+async function testAlpacaServer(stepType){
+  if (state.busy) return setStatus('Please wait for the current action to finish.', 'warn');
+  try {
+    setBusy(true);
+    setStatus('Testing Alpaca server and loading configured devices, please wait...', 'warn');
+    const { host, port } = readAlpacaServerInputs(stepType);
+    const key = cacheKey(host, port, 'ALL');
+    const hadCache = !!state.alpacaCache[key];
+    let all = state.alpacaCache[key];
+    if (!hadCache) {
+      await rpc('set_alpaca_server', { host, port }, 12);
+      const resp = await rpc('query_alpaca_devices', { host, port, device_type:'ALL' }, 12);
+      all = Array.isArray(resp?.result) ? resp.result : [];
+      state.alpacaCache[key] = all;
+    }
+    state.alpaca.devices.camera = all.filter((d)=>String(d.device_type||'').toUpperCase()==='CAMERA');
+    state.alpaca.devices.mount = all.filter((d)=>{ const t=String(d.device_type||'').toUpperCase(); return t==='TELESCOPE' || t==='MOUNT'; });
+    state.alpaca.devices.rotator = all.filter((d)=>String(d.device_type||'').toUpperCase()==='ROTATOR');
+    render();
+    setStatus(`Server reachable at ${host}:${port}. Found ${all.length} configured device(s).${hadCache ? ' (cached)' : ''}`, all.length?'ok':'warn');
+  } catch(e){ setStatus(`Server test failed: ${e.message}`, 'error'); }
+  finally { setBusy(false); }
+}
+
+async function queryAlpacaDevices(stepType){
+  if (state.busy) return setStatus('Please wait for the current action to finish.', 'warn');
+  try {
+    setBusy(true);
+    setStatus(`Querying Alpaca ${stepType} devices, please wait...`, 'warn');
+    const dtype = alpacaDeviceTypeForStep(stepType); if (!dtype) throw new Error('Invalid Alpaca device type.');
+    const { host, port } = readAlpacaServerInputs(stepType);
+    const key = cacheKey(host, port, dtype);
+    const hadCache = !!state.alpacaCache[key];
+    let devices = state.alpacaCache[key];
+    if (!hadCache) {
+      await rpc('set_alpaca_server', { host, port }, 12);
+      const resp = await rpc('query_alpaca_devices', { host, port, device_type:dtype }, 12);
+      devices = Array.isArray(resp?.result) ? resp.result : [];
+      state.alpacaCache[key] = devices;
+    }
+    state.alpaca.devices[stepType] = devices;
+    render();
+    if (stepType === 'camera' && devices.length) {
+      const devNum = Number(devices[0].device_number);
+      if (Number.isFinite(devNum) && devNum >= 0) {
+        const ok = await tryApplyAlpacaCameraPixelSize(host, port, devNum);
+        if (ok) {
+          setStatus(`Loaded ${devices.length} Alpaca ${stepType} device(s). Pixel size auto-filled from device ${devNum}.${hadCache ? ' (cached)' : ''}`, 'ok');
+          return;
+        }
+      }
+    }
+    setStatus(`Loaded ${devices.length} Alpaca ${stepType} device(s).${hadCache ? ' (cached)' : ''}`, devices.length?'ok':'warn');
+  } catch(e){ setStatus(`Alpaca device query failed: ${e.message}`, 'error'); }
+  finally { setBusy(false); }
+}
+
+async function applyAlpacaDevice(stepType){
+  if (state.busy) return setStatus('Please wait for the current action to finish.', 'warn');
+  try {
+    setBusy(true); await ensureDisconnected();
+    const dtype = alpacaDeviceTypeForStep(stepType); const dkey = alpacaDeviceKeyForStep(stepType);
+    const { host, port } = readAlpacaServerInputs(stepType);
+    const devNum = Number(document.getElementById(`alpacaDevice_${stepType}`)?.value);
+    if (!Number.isFinite(devNum) || devNum<0) throw new Error(`Select an Alpaca ${stepType} device first.`);
+    await rpc('set_alpaca_server', { host, port }, 40);
+    await rpc('set_selected_alpaca_device', { device_type:dtype, device_number:devNum }, 40);
+    state.alpacaCache = {};
+    state.chosen.alpaca[dkey] = devNum;
+    if (stepType === 'camera') await tryApplyAlpacaCameraPixelSize(host, port, devNum);
+    await refreshAll();
+    setStatus(`Selected Alpaca ${stepType} device ${devNum}.`, 'ok');
+  } catch(e){ setStatus(`Apply Alpaca device failed: ${e.message}`, 'error'); }
+  finally { setBusy(false); }
+}
+
+async function applyManualAlpacaDevice(stepType){
+  if (state.busy) return setStatus('Please wait for the current action to finish.', 'warn');
+  try {
+    setBusy(true); await ensureDisconnected();
+    const dtype = alpacaDeviceTypeForStep(stepType); const dkey = alpacaDeviceKeyForStep(stepType);
+    const { host, port } = readAlpacaServerInputs(stepType);
+    const devNum = readAlpacaManualDevice(stepType);
+    if (devNum===null) throw new Error(`Enter a valid manual ${stepType} device number.`);
+    await rpc('set_alpaca_server', { host, port }, 40);
+    await rpc('set_selected_alpaca_device', { device_type:dtype, device_number:devNum }, 40);
+    state.alpacaCache = {};
+    state.chosen.alpaca[dkey] = devNum;
+    if (stepType === 'camera') await tryApplyAlpacaCameraPixelSize(host, port, devNum);
+    await refreshAll();
+    setStatus(`Selected Alpaca ${stepType} device ${devNum} (manual).`, 'ok');
+  } catch(e){ setStatus(`Manual Alpaca selection failed: ${e.message}`, 'error'); }
+  finally { setBusy(false); }
+}
+
+function goBack(){ if (state.busy || state.step===0) return; state.step--; render(); setStatus('Moved to previous step.'); }
+
+async function persistCurrentStep(){
+  const key = STEPS[state.step].key;
+  if (key==='profile'){ if (!hasProfiles()) throw new Error('Create a profile before continuing.'); return; }
+  if (['camera','mount','ao','rotator','setup'].includes(key)) await ensureDisconnected();
+
+  if (key==='camera'){
+    const camera = document.getElementById('cameraChoice')?.value || '';
+    if (!camera) throw new Error('Select a camera before continuing.');
+    const cameraId = (document.getElementById('cameraId')?.value || '').trim();
+    await rpc('set_selected_camera', { camera });
+    if (isAlpacaChoice(camera)){
+      const { host, port } = readAlpacaServerInputs('camera');
+      await rpc('set_alpaca_server', { host, port }, 40);
+      let devNum = Number(document.getElementById('alpacaDevice_camera')?.value);
+      if (!Number.isFinite(devNum) || devNum < 0){ const manual = readAlpacaManualDevice('camera'); if (manual !== null) devNum = manual; }
+      if (!Number.isFinite(devNum) || devNum < 0) throw new Error('Select an Alpaca camera device before continuing.');
+      await rpc('set_selected_alpaca_device', { device_type:'CAMERA', device_number:devNum }, 40);
+      state.chosen.alpaca.camera_device = devNum;
+      await tryApplyAlpacaCameraPixelSize(host, port, devNum);
+    }
+    await tryApplySelectedCameraPixelSize();
+    if (cameraId) await rpc('set_selected_camera_id', { camera_id: cameraId });
+    state.chosen.camera = camera; state.chosen.camera_id = cameraId; await refreshAll(); return;
+  }
+
+  if (key==='mount'){
+    const mount = document.getElementById('mountChoice')?.value || '';
+    if (!mount) throw new Error('Select a mount before continuing.');
+    await rpc('set_selected_mount', { mount });
+    if (isAlpacaChoice(mount)){
+      const { host, port } = readAlpacaServerInputs('mount');
+      await rpc('set_alpaca_server', { host, port }, 40);
+      let devNum = Number(document.getElementById('alpacaDevice_mount')?.value);
+      if (!Number.isFinite(devNum) || devNum < 0){ const manual = readAlpacaManualDevice('mount'); if (manual !== null) devNum = manual; }
+      if (!Number.isFinite(devNum) || devNum < 0) throw new Error('Select an Alpaca mount device before continuing.');
+      await rpc('set_selected_alpaca_device', { device_type:'MOUNT', device_number:devNum }, 40);
+      state.chosen.alpaca.telescope_device = devNum;
+    }
+    state.chosen.mount = mount; await refreshAll(); return;
+  }
+
+  if (key==='ao'){ const ao = document.getElementById('aoChoice')?.value || ''; await rpc('set_selected_ao', { ao }); state.chosen.ao = ao; await refreshAll(); return; }
+
+  if (key==='rotator'){
+    const rotator = document.getElementById('rotatorChoice')?.value || '';
+    await rpc('set_selected_rotator', { rotator });
+    if (isAlpacaChoice(rotator)){
+      const { host, port } = readAlpacaServerInputs('rotator');
+      await rpc('set_alpaca_server', { host, port }, 40);
+      let devNum = Number(document.getElementById('alpacaDevice_rotator')?.value);
+      if (!Number.isFinite(devNum) || devNum < 0){ const manual = readAlpacaManualDevice('rotator'); if (manual !== null) devNum = manual; }
+      if (!Number.isFinite(devNum) || devNum < 0) throw new Error('Select an Alpaca rotator device before continuing.');
+      await rpc('set_selected_alpaca_device', { device_type:'ROTATOR', device_number:devNum }, 40);
+      state.chosen.alpaca.rotator_device = devNum;
+    }
+    state.chosen.rotator = rotator; await refreshAll(); return;
+  }
+
+  if (key==='setup'){
+    const payload = {
+      focal_length: Number(document.getElementById('focalLength')?.value),
+      camera_binning: Number(document.getElementById('cameraBinning')?.value),
+      software_binning: Number(document.getElementById('softwareBinning')?.value),
+      guide_speed: Number(document.getElementById('guideSpeed')?.value),
+      calibration_duration: Number(document.getElementById('calDuration')?.value),
+      calibration_distance: Number(document.getElementById('calDistance')?.value),
+      high_res_encoders: !!document.getElementById('highResEncoders')?.checked,
+      auto_restore_calibration: !!document.getElementById('autoRestore')?.checked,
+      multistar_enabled: !!document.getElementById('multistar')?.checked
+    };
+    Object.keys(payload).forEach((k)=>{ if (typeof payload[k]==='number' && !Number.isFinite(payload[k])) delete payload[k]; });
+    await rpc('set_profile_setup', payload);
+    await refreshAll();
+  }
+}
+
+async function goNext(){
+  if (state.busy) return;
+  if (state.step === 0) return setStatus('Create a profile using "Create + Next" to continue.', 'warn');
+  try { setBusy(true); await persistCurrentStep(); if (state.step < STEPS.length-1){ state.step++; render(); setStatus('Step saved. Continue with Next.', 'ok'); } }
+  catch(e){ setStatus(e.message, 'error'); }
+  finally { setBusy(false); }
+}
+
+async function finishWizard(){
+  if (state.busy) return;
+  try {
+    state.finishInProgress = true;
+    setBusy(true);
+    updateFinishProgress(2, 'Validating setup...');
+    await persistCurrentStep();
+    const connectFirst = !!document.getElementById('connectBeforeDarks')?.checked;
+    const frameCount = Number(document.getElementById('darkFrameCount')?.value || 5);
+    const minExpS = Number(document.getElementById('darkMinExp')?.value);
+    const maxExpS = Number(document.getElementById('darkMaxExp')?.value);
+    const clearExisting = !!document.getElementById('darkClearExisting')?.checked;
+
+    if (connectFirst){
+      updateFinishProgress(8, 'Connecting equipment...');
+      setStatus('Connecting equipment before dark creation...');
+      await ensureConnected();
+      updateFinishProgress(15, 'Equipment connected.');
+    } else {
+      updateFinishProgress(15, 'Using current connection state.');
+    }
+    const darkPayload = { frame_count:frameCount, clear_existing:clearExisting, load_after:true, notes:`Web wizard build for profile ${selectedProfileName()}` };
+    if (Number.isFinite(minExpS) && minExpS > 0) darkPayload.min_exposure_ms = Math.round(minExpS * 1000);
+    if (Number.isFinite(maxExpS) && maxExpS > 0) darkPayload.max_exposure_ms = Math.round(maxExpS * 1000);
+
+    startFinishProgressPulse('Building dark library. Keep the scope covered...', 18, 82);
+    setStatus('Building dark library. Keep the scope covered until complete...');
+    await rpc('build_dark_library', darkPayload, 120);
+    stopFinishProgressPulse();
+    updateFinishProgress(90, 'Dark library built.');
+    updateFinishProgress(99, 'Finalizing and refreshing state...');
+    await refreshAll();
+    updateFinishProgress(100, 'Complete.');
+    state.step = 0;
+    render();
+    setStatus(`Wizard complete. Profile '${selectedProfileName()}' is configured and dark frames were created.`, 'ok');
+  } catch(e){
+    stopFinishProgressPulse();
+    if (e?.name === 'AbortError' || String(e?.message || '').toLowerCase().includes('aborted')) {
+      setStatus('Dark build stopped. You can change settings and run Finish again.', 'warn');
+      updateFinishProgress(0, 'Stopped by user.', true);
+    } else {
+      setStatus(`Finish failed: ${e.message}`, 'error');
+    }
+  } finally {
+    state.finishInProgress = false;
+    setBusy(false);
+  }
+}
+
+refreshAll();
+
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('.section-toggle');
+  if (!button) return;
+  const card = button.closest('.section-card');
+  if (!card) return;
+  const isCollapsed = card.classList.toggle('collapsed');
+  button.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+});
+</script>
+</body>
+</html>

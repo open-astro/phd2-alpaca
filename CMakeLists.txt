@@ -85,9 +85,20 @@ include(cmake_modules/compiler_options.cmake)
 # declare useful functions about documentation
 include(cmake_modules/PHD2BuildDoc.cmake)
 
-# retrieves the version from the source file
+# retrieves the version from version.md
 get_phd_version()
-message(STATUS "PHD2 version '${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}' (extracted from source)")
+set(PHD2_VERSION_CORE "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}")
+set(PHD2_VERSION_SUFFIX "${VERSION_SUFFIX}")
+set(PHD2_VERSION_FULL "${PHD2_VERSION_CORE}${PHD2_VERSION_SUFFIX}")
+message(STATUS "PHD2 version '${PHD2_VERSION_FULL}' (from version.md)")
+
+# Generate compile-time version macros from version.md
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
+configure_file(
+  ${PHD_PROJECT_ROOT_DIR}/cmake_modules/phd_version.h.in
+  ${CMAKE_BINARY_DIR}/generated/phd_version.h
+  @ONLY
+)
 
 
 
@@ -151,6 +162,7 @@ add_subdirectory(contributions/MPI_IS_gaussian_process tmp_gaussian_process)
 # Global include directories
 include_directories(${phd_src_dir})
 include_directories(${PHD_PROJECT_ROOT_DIR}/cameras)
+include_directories(${CMAKE_BINARY_DIR}/generated)
 # PROJECT_ROOT_DIR is added as in include directory file code that
 # uses: #include "cameras/some_camera.h"
 # TODO: would be better to separate cameras/ into per-camera directories
@@ -1036,6 +1048,36 @@ if(UNIX AND NOT APPLE)
       endif()
     endforeach()
   endforeach()
+endif()
+
+## Bundle/install embedded web portal assets
+if(APPLE)
+  add_custom_command(
+    TARGET phd2
+    POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E make_directory $<TARGET_FILE_DIR:phd2>/../Resources/webui
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory ${PHD_PROJECT_ROOT_DIR}/scripts/webui $<TARGET_FILE_DIR:phd2>/../Resources/webui
+  )
+endif()
+
+if(WIN32)
+  add_custom_command(
+    TARGET phd2
+    POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E make_directory $<TARGET_FILE_DIR:phd2>/webui
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory ${PHD_PROJECT_ROOT_DIR}/scripts/webui $<TARGET_FILE_DIR:phd2>/webui
+  )
+  install(DIRECTORY ${PHD_PROJECT_ROOT_DIR}/scripts/webui/ DESTINATION ${CMAKE_INSTALL_PREFIX}/webui)
+endif()
+
+if(UNIX AND NOT APPLE)
+  add_custom_command(
+    TARGET phd2
+    POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E make_directory $<TARGET_FILE_DIR:phd2>/share/phd2/webui
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory ${PHD_PROJECT_ROOT_DIR}/scripts/webui $<TARGET_FILE_DIR:phd2>/share/phd2/webui
+  )
+  install(DIRECTORY ${PHD_PROJECT_ROOT_DIR}/scripts/webui/ DESTINATION ${CMAKE_INSTALL_PREFIX}/share/phd2/webui)
 endif()
 
 ################################################################

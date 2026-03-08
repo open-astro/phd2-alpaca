@@ -137,6 +137,7 @@ EVT_MENU(MENU_STATS, MyFrame::OnStats)
 EVT_MENU(MENU_AO_GRAPH, MyFrame::OnAoGraph)
 EVT_MENU(MENU_TARGET, MyFrame::OnTarget)
 EVT_MENU(MENU_SERVER, MyFrame::OnServerMenu)
+EVT_MENU(MENU_OPEN_WEB_PORTAL, MyFrame::OnOpenWebPortal)
 EVT_MENU(MENU_STARPROFILE, MyFrame::OnStarProfile)
 EVT_MENU(MENU_RESTORE_WINDOWS, MyFrame::OnRestoreWindows)
 EVT_MENU(MENU_AUTOSTAR, MyFrame::OnAutoStar)
@@ -506,6 +507,7 @@ void MyFrame::SetupMenuBar()
                        _("Align by measuring the RA axis offset from the celestial pole (Fast)"));
     tools_menu->AppendSeparator();
     tools_menu->AppendCheckItem(MENU_SERVER, _("Enable Server"), _("Enable PHD2 server capability"));
+    tools_menu->Append(MENU_OPEN_WEB_PORTAL, _("Open Web Portal"), _("Open the embedded web portal in your browser"));
     tools_menu->AppendCheckItem(EEGG_STICKY_LOCK, _("Sticky Lock Position"),
                                 _("Keep the same lock position when guiding starts"));
 

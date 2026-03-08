@@ -16,30 +16,21 @@ if ($PSScriptRoot) {
 }
 Set-Location $RootDir
 
-# Extract version from phd.h
-Write-Host "Extracting version from src/phd.h..." -ForegroundColor Yellow
-$phdHeaderPath = Join-Path $RootDir "src\phd.h"
-if (-not (Test-Path $phdHeaderPath)) {
-    Write-Error "Cannot find phd.h at: $phdHeaderPath"
+# Extract version from version.md
+Write-Host "Extracting version from version.md..." -ForegroundColor Yellow
+$versionFilePath = Join-Path $RootDir "version.md"
+if (-not (Test-Path $versionFilePath)) {
+    Write-Error "Cannot find version.md at: $versionFilePath"
     Write-Host "Current directory: $(Get-Location)" -ForegroundColor Yellow
     exit 1
 }
-$phdHeader = Get-Content $phdHeaderPath -Raw
-$versionMatch = [regex]::Match($phdHeader, 'PHDVERSION\s+_T\("([^"]+)"\)')
-$subverMatch = [regex]::Match($phdHeader, 'PHDSUBVER\s+_T\("([^"]+)"\)')
-
+$versionFile = Get-Content $versionFilePath -Raw
+$versionMatch = [regex]::Match($versionFile, '(?m)^\s*([0-9]+\.[0-9]+\.[0-9]+([A-Za-z0-9._-]*))\s*$')
 if (-not $versionMatch.Success) {
-    Write-Error "Could not extract PHDVERSION from src/phd.h"
+    Write-Error "Could not extract version from version.md (expected line like 1.2.3 or 1.2.3rc1)"
     exit 1
 }
-
-$version = $versionMatch.Groups[1].Value
-if ($subverMatch.Success) {
-    $subver = $subverMatch.Groups[1].Value
-    $fullVersion = "$version$subver"
-} else {
-    $fullVersion = $version
-}
+$fullVersion = $versionMatch.Groups[1].Value
 
 Write-Host "Detected version: $fullVersion" -ForegroundColor Green
 
@@ -184,4 +175,3 @@ if (Test-Path $installerPath) {
     Write-Error "Installer file not found at expected location: $installerPath"
     exit 1
 }
-

@@ -103,8 +103,10 @@ def main():
         run_check("get_app_state", lambda: cli.call("get_app_state"))
         run_check("get_profiles", lambda: cli.call("get_profiles"))
         run_check("get_profile", lambda: cli.call("get_profile"))
+        run_check("get_profile_setup", lambda: cli.call("get_profile_setup"))
         run_check("get_connected", lambda: cli.call("get_connected"))
         run_check("get_current_equipment", lambda: cli.call("get_current_equipment"))
+        run_check("get_calibration_files_status", lambda: cli.call("get_calibration_files_status"))
         run_check("get_indi_server", lambda: cli.call("get_indi_server"))
         run_check("get_alpaca_server", lambda: cli.call("get_alpaca_server"))
         run_check("discover_alpaca_servers", lambda: cli.call("discover_alpaca_servers", {"num_queries": 1, "timeout_seconds": 1}))
@@ -201,6 +203,41 @@ def main():
                 params={"camera": camera_choice},
                 message_contains="connected",
             )
+        elif not is_connected:
+            base_profile = run_check("get_profile (before profile CRUD)", lambda: cli.call("get_profile")) or {}
+            base_id = base_profile.get("id")
+            test_name = f"rpc_smoke_profile_{int(time.time())}"
+            test_name2 = test_name + "_renamed"
+            test_name3 = test_name + "_clone"
+
+            created = run_check("create_profile", lambda: cli.call("create_profile", {"name": test_name, "select": True})) or {}
+            run_check("set_profile_by_name", lambda: cli.call("set_profile_by_name", {"name": test_name}))
+            run_check("rename_profile", lambda: cli.call("rename_profile", {"name": test_name, "new_name": test_name2}))
+            run_check("clone_profile", lambda: cli.call("clone_profile", {"source_name": test_name2, "dest_name": test_name3, "select": False}))
+
+            run_check(
+                "set_profile_setup",
+                lambda: cli.call(
+                    "set_profile_setup",
+                    {
+                        "focal_length": 400,
+                        "pixel_size": 2.4,
+                        "camera_binning": 1,
+                        "software_binning": 1,
+                        "guide_speed": 0.5,
+                        "calibration_duration": 750,
+                        "calibration_distance": 25,
+                        "high_res_encoders": False,
+                        "auto_restore_calibration": False,
+                        "multistar_enabled": True,
+                    },
+                ),
+            )
+
+            run_check("delete_profile clone", lambda: cli.call("delete_profile", {"name": test_name3, "delete_dark_files": False}))
+            run_check("delete_profile renamed", lambda: cli.call("delete_profile", {"name": test_name2, "delete_dark_files": False}))
+            if isinstance(base_id, int) and base_id > 0:
+                run_check("restore_profile", lambda: cli.call("set_profile", {"id": base_id}))
 
     finally:
         cli.close()
