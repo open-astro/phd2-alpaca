@@ -1964,8 +1964,9 @@ static void get_alpaca_camera_pixelsize(JObj& response, const json_value *params
 
     if (!ok || pixelSize <= 0.0)
     {
-        response << jrpc_error(1, wxString::Format("failed to query camera pixel size from %s:%ld/%ld (error %ld)", host, port,
-                                                   deviceNum, errorCode));
+        response << jrpc_error(1,
+                               wxString::Format("failed to query camera pixel size from %s:%ld/%ld (error %ld)", host, port,
+                                                deviceNum, errorCode));
         return;
     }
 
@@ -3387,7 +3388,8 @@ static void build_dark_library(JObj& response, const json_value *params)
     for (int exp : selected)
         exps << exp;
     JObj rslt;
-    rslt << NV("profile_id", pConfig->GetCurrentProfileId()) << NV("dark_library_path", MyFrame::DarkLibFileName(pConfig->GetCurrentProfileId()))
+    rslt << NV("profile_id", pConfig->GetCurrentProfileId())
+         << NV("dark_library_path", MyFrame::DarkLibFileName(pConfig->GetCurrentProfileId()))
          << NV("frame_count", (int) frameCount) << NV("exposure_count", builtCount) << NV("exposures_ms", exps);
     response << jrpc_result(rslt);
 }
@@ -5082,7 +5084,8 @@ static bool path_is_under(const wxString& child, const wxString& parent)
     return c.StartsWith(p);
 }
 
-static bool call_rpc_result_raw_json(const wxString& method, const wxString& paramsJson, wxString *resultRaw, wxString *errorMessage)
+static bool call_rpc_result_raw_json(const wxString& method, const wxString& paramsJson, wxString *resultRaw,
+                                     wxString *errorMessage)
 {
     JsonParser parser;
     wxCharBuffer cbuf = paramsJson.ToUTF8();
@@ -5142,9 +5145,10 @@ static std::string handle_http_request(EventServer *server, const HttpRequest& r
         if (!read_file_utf8_or_binary(fullPath, &data))
             return http_not_found();
 
-        wxString hdr = wxString::Format("HTTP/1.1 200 OK\r\nConnection: close\r\nCache-Control: no-store\r\nContent-Type: %s\r\n"
-                                        "Content-Length: %u\r\n\r\n",
-                                        mime_type_for_path(fullPath), (unsigned int) data.size());
+        wxString hdr =
+            wxString::Format("HTTP/1.1 200 OK\r\nConnection: close\r\nCache-Control: no-store\r\nContent-Type: %s\r\n"
+                             "Content-Length: %u\r\n\r\n",
+                             mime_type_for_path(fullPath), (unsigned int) data.size());
         std::string resp(hdr.ToUTF8().data());
         resp.append(data);
         return resp;

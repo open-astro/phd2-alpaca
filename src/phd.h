@@ -80,10 +80,10 @@
 #define APPNAME _T("OpenAstro PHD2")
 #include "phd_version.h"
 #ifndef PHDVERSION
-#define PHDVERSION _T("0.0.0")
+# define PHDVERSION _T("0.0.0")
 #endif
 #ifndef PHDSUBVER
-#define PHDSUBVER _T("")
+# define PHDSUBVER _T("")
 #endif
 #define FULLVER PHDVERSION PHDSUBVER
 
