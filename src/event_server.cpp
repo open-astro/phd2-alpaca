@@ -42,6 +42,7 @@
 #include <wx/sckstrm.h>
 #include <ctype.h>
 #include <stdio.h>
+#include <algorithm>
 #include <sstream>
 #include <string.h>
 

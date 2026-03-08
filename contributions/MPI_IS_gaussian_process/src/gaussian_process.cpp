@@ -41,8 +41,9 @@
  * @brief     The GP class implements the Gaussian Process functionality.
  */
 
-#include <cstdint>
+#include <algorithm>
 #include <cassert>
+#include <cstdint>
 
 #include "gaussian_process.h"
 #include "math_tools.h"
