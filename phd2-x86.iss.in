@@ -22,6 +22,7 @@ DisableProgramGroupPage=no
 
 [Files]
 Source: Release\phd2.exe; DestDir: {app}; Flags: replacesameversion; AfterInstall: UpdateFirewallRules
+Source: Release\webui\*; DestDir: {app}\webui; Flags: recursesubdirs replacesameversion
 Source: Release\locale\*; Excludes: *-old.*,help; DestDir: {app}\locale; Flags: recursesubdirs replacesameversion
 Source: Release\PHD2GuideHelp.zip; DestDir: {app}; Flags: replacesameversion
 Source: README-PHD2.txt; DestDir: {app}; Flags: isreadme replacesameversion
